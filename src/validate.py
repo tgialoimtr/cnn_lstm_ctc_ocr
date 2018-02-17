@@ -23,17 +23,18 @@ from PIL import Image
 
 import tensorflow as tf
 from tensorflow.contrib import learn
-
+print tf.__version__
 import mjsynth
 import model
-
+from time import time
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('model','../data/model',
+tf.app.flags.DEFINE_string('model','../data/model_1rnn/',
                           """Directory for model checkpoints""")
-tf.app.flags.DEFINE_string('device','/gpu:0',
+tf.app.flags.DEFINE_string('device','/device:GPU:0',
                            """Device for graph placement""")
-
+tf.app.flags.DEFINE_string('imgsdir','',
+                           """Image to predict""")
 tf.logging.set_verbosity(tf.logging.WARN)
 
 # Non-configurable parameters
@@ -44,8 +45,11 @@ def _get_image(filename):
     image = Image.open(filename) 
     image = np.array(image)
     # in mjsynth, all three channels are the same in these grayscale-cum-RGB data
-    image = image[:,:,:1] # so just extract first channel, preserving 3D shape
-
+    if len(image.shape) < 3:
+        image = image[:,:,np.newaxis] # so just extract first channel, preserving 3D shape
+    else:
+        image = image[:,:,:1]
+    
     return image
 
 
@@ -58,8 +62,8 @@ def _preprocess_image(image):
     image = tf.subtract(image, 0.5)
 
     # Pad with copy of first row to expand to 32 pixels height
-    first_row = tf.slice(image, [0, 0, 0], [1, -1, -1])
-    image = tf.concat([first_row, image], 0)
+    #first_row = tf.slice(image, [0, 0, 0], [1, -1, -1])
+    #image = tf.concat([first_row, image], 0)
 
     return image
 
@@ -68,7 +72,7 @@ def _get_input():
     """Set up and return image and width placeholder tensors"""
 
     # Raw image as placeholder to be fed one-by-one by dictionary
-    image = tf.placeholder(tf.uint8, shape=[31, None, 1])
+    image = tf.placeholder(tf.uint8, shape=[32, None, 1])
     width = tf.placeholder(tf.int32,shape=[]) # for ctc_loss
 
     return image,width
@@ -79,13 +83,14 @@ def _get_output(rnn_logits,sequence_length):
        predictions: Results of CTC beacm search decoding
     """
     with tf.name_scope("test"):
-        predictions,_ = tf.nn.ctc_beam_search_decoder(rnn_logits, 
+        predictions,probs = tf.nn.ctc_beam_search_decoder(rnn_logits, 
                                                    sequence_length,
                                                    beam_width=128,
-                                                   top_paths=1,
-                                                   merge_repeated=True)
+                                                   top_paths=3,
+                                                   merge_repeated=False)
 
-    return predictions
+    return tf.identity(probs, name='o0'), tf.identity(predictions[0].values, name='o1'), tf.identity(predictions[1].values\
+                                        , name='o2'), tf.identity(predictions[2].values,name='o3')
 
 
 def _get_session_config():
@@ -124,40 +129,78 @@ def _get_string(labels):
     string = ''.join([mjsynth.out_charset[c] for c in labels])
     return string
 
+def save_predictionmodel(export_path, sess, x, w, y_list):
+    
+    builder = tf.saved_model.builder.SavedModelBuilder(export_path)
+    print x, w
+    print y_list    
+    tensor_info_x = tf.saved_model.utils.build_tensor_info(x)
+    tensor_info_w = tf.saved_model.utils.build_tensor_info(w)
+    tensor_info_y_dict = {}
+    for i, y in enumerate(y_list):
+        tensor_info_y_dict['output'+str(i)] = tf.saved_model.utils.build_tensor_info(y)
+    
+    prediction_signature = (
+        tf.saved_model.signature_def_utils.build_signature_def(
+            inputs={'images': tensor_info_x, 'width': tensor_info_w},
+            outputs=tensor_info_y_dict,
+            method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
+    
+    legacy_init_op = tf.group(tf.tables_initializer(), name='legacy_init_op')
+    builder.add_meta_graph_and_variables(
+        sess, [tf.saved_model.tag_constants.SERVING],
+        signature_def_map={
+            tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                prediction_signature,
+        },
+        legacy_init_op=legacy_init_op)
+    
+    builder.save(as_text=True)
+
 def main(argv=None):
 
     with tf.Graph().as_default():
-        image,width = _get_input() # Placeholder tensors
+        with tf.device('/device:CPU:0'):
+            image,width = _get_input() # Placeholder tensors
+ 
+            proc_image = _preprocess_image(image)
+            proc_image = tf.reshape(proc_image,[1,32,-1,1]) # Make first dim batch
 
-        proc_image = _preprocess_image(image)
-        proc_image = tf.reshape(proc_image,[1,32,-1,1]) # Make first dim batch
-
-        with tf.device(FLAGS.device):
+        with tf.device('/device:CPU:0'):
             features,sequence_length = model.convnet_layers( proc_image, width, 
                                                              mode)
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes() )
-            prediction = _get_output( logits,sequence_length)
+        with tf.device('/device:CPU:0'):
+            predictions = _get_output( logits,sequence_length)
 
-        session_config = _get_session_config()
-        restore_model = _get_init_trained()
+            session_config = _get_session_config()
+            restore_model = _get_init_trained()
         
-        init_op = tf.group( tf.global_variables_initializer(),
+            init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer()) 
 
         with tf.Session(config=session_config) as sess:
             
             sess.run(init_op)
             restore_model(sess, _get_checkpoint()) # Get latest checkpoint
-
-            # Iterate over filenames given on lines of standard input
-            for line in sys.stdin:
+            print image, width
+            print predictions            
+            save_predictionmodel('/home/loitg/savedmodel/1rnn/1/', sess, image, width, predictions)
+            print 'saved'
+            exit(0)
+            tt = time()
+            sortedlist = sorted(os.listdir(FLAGS.imgsdir), key=lambda x:(len(x),x))
+            for filename in sortedlist:
+                if filename[-3:].upper() != 'JPG': continue
+                line = os.path.join(FLAGS.imgsdir, filename)
+                print line
                 # Eliminate any trailing newline from filename
                 image_data = _get_image(line.rstrip())
                 # Get prediction for single image (isa SparseTensorValue)
-                [output] = sess.run(prediction,{ image: image_data, 
+                [output] = sess.run([predictions[1]],{ image: image_data, 
                                                  width: image_data.shape[1]} )
-                print(_get_string(output.values))
+                print(str(time()-tt) + ':' +  _get_string(output))
 
 if __name__ == '__main__':
     tf.app.run()

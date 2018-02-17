@@ -24,7 +24,7 @@ import model
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('output','../data/model',
+tf.app.flags.DEFINE_string('output','../data/model_1-5rnn',
                           """Directory for event logs and checkpoints""")
 tf.app.flags.DEFINE_string('tune_from','',
                           """Path to pre-trained model checkpoint""")
@@ -171,7 +171,6 @@ def main(argv=None):
         global_step = tf.contrib.framework.get_or_create_global_step()
         
         image,width,label = _get_input()
-
         with tf.device(FLAGS.train_device):
             features,sequence_length = model.convnet_layers( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
@@ -183,7 +182,6 @@ def main(argv=None):
         summary_op = tf.summary.merge_all()
         init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer()) 
-
         sv = tf.train.Supervisor(
             logdir=FLAGS.output,
             init_op=init_op,

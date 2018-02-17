@@ -31,7 +31,7 @@ The Example proto contains the following fields:
 # The list (well, string) of valid output characters
 # If any example contains a character not found here, an error will result
 # from the calls to .index in the decoder below
-out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 `~!@#$%^&*()-=_+[]{};'\\:\"|,./<>?"
 
 jpeg_data = tf.placeholder(dtype=tf.string)
 jpeg_decoder = tf.image.decode_jpeg(jpeg_data,channels=1)
@@ -58,12 +58,12 @@ def calc_seq_len(image_width):
 seq_lens = [calc_seq_len(w) for w in range(1024)]
 
 def gen_data(input_base_dir, image_list_filename, output_filebase, 
-             num_shards=1000,start_shard=0):
+             num_shards=100,start_shard=0):
     """ Generate several shards worth of TFRecord data """
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth=True
     sess = tf.Session(config=session_config)
-    image_filenames = get_image_filenames(os.path.join(input_base_dir,
+    image_filenames, image_texts = get_image_filenames(os.path.join(input_base_dir,
                                                        image_list_filename))
     num_digits = math.ceil( math.log10( num_shards - 1 ))
     shard_format = '%0'+ ('%d'%num_digits) + 'd' # Use appropriate # leading zeros
@@ -76,49 +76,57 @@ def gen_data(input_base_dir, image_list_filename, output_filebase,
         if os.path.isfile(out_filename): # Don't recreate data if restarting
             continue
         print str(i),'of',str(num_shards),'[',str(start),':',str(end),']',out_filename
-        gen_shard(sess, input_base_dir, image_filenames[start:end], out_filename)
+        gen_shard(sess, input_base_dir, image_filenames[start:end], image_texts[start:end], out_filename)
     # Clean up writing last shard
     start = num_shards*images_per_shard
     out_filename = output_filebase+'-'+(shard_format % num_shards)+'.tfrecord'
     print str(i),'of',str(num_shards),'[',str(start),':]',out_filename
-    gen_shard(sess, input_base_dir, image_filenames[start:], out_filename)
+    gen_shard(sess, input_base_dir, image_filenames[start:], image_texts[start:], out_filename)
 
     sess.close()
 
-def gen_shard(sess, input_base_dir, image_filenames, output_filename):
+def gen_shard(sess, input_base_dir, image_filenames, image_texts, output_filename):
     """Create a TFRecord file from a list of image filenames"""
     writer = tf.python_io.TFRecordWriter(output_filename)
     
-    for filename in image_filenames:
+    for filename, text in zip(image_filenames, image_texts):
         path_filename = os.path.join(input_base_dir,filename)
         if os.stat(path_filename).st_size == 0:
             print('SKIPPING',filename)
             continue
         try:
             image_data,height,width = get_image(sess,path_filename)
-            text,labels = get_text_and_labels(filename)
+            print path_filename, text
+            text,labels = get_text_and_labels(filename, text)
+            print text
+            print labels 
             if is_writable(width,text):
                 example = make_example(filename, image_data, labels, text, 
                                        height, width)
                 writer.write(example.SerializeToString())
             else:
                 print('SKIPPING',filename)
-        except:
+        except Exception as e: 
             # Some files have bogus payloads, catch and note the error, moving on
             print('ERROR',filename)
+            print e
     writer.close()
 
 
 def get_image_filenames(image_list_filename):
     """ Given input file, generate a list of relative filenames"""
     filenames = []
+    texts = []
     with open(image_list_filename) as f:
         for line in f:
             # Carve out the ground truth string and file path from lines like:
             # ./2697/6/466_MONIKER_49537.jpg 49537
-            filename = line.split(' ',1)[0][2:] # split off "./" and number
+            temp = line.split(' ',1) # split off "./" and number
+            filename = temp[0][2:]
+            text = temp[1].rstrip('\n')
             filenames.append(filename)
-    return filenames
+            texts.append(text)
+    return filenames, texts
 
 def get_image(sess,filename):
     """Given path to an image file, load its data and size"""
@@ -133,11 +141,11 @@ def is_writable(image_width,text):
     """Determine whether the CNN-processed image is longer than the string"""
     return (image_width > min_width) and (len(text) <= seq_lens[image_width])
     
-def get_text_and_labels(filename):
+def get_text_and_labels(filename, text):
     """ Extract the human-readable text and label sequence from image filename"""
     # Ground truth string lines embedded within base filename between underscores
     # 2697/6/466_MONIKER_49537.jpg --> MONIKER
-    text = os.path.basename(filename).split('_',2)[1]
+    #text = os.path.basename(filename).split('_',2)[1]
     # Transform string text to sequence of indices using charset, e.g.,
     # MONIKER -> [12, 14, 13, 8, 10, 4, 17]
     labels = [out_charset.index(c) for c in list(text)]
@@ -174,9 +182,9 @@ def _bytes_feature(values):
 
 def main(argv=None):
     
-    gen_data('../data/images', 'annotation_train.txt', '../data/train/words')
-    gen_data('../data/images', 'annotation_val.txt',   '../data/val/words')
-    gen_data('../data/images', 'annotation_test.txt',  '../data/test/words')
+    gen_data('../data/images_txt', 'anno-train.txt', '../data/train/words')
+    #gen_data('../data/images', 'annotation_val.txt',   '../data/val/words')
+    gen_data('../data/images_txt', 'anno-test.txt',  '../data/test/words')
 
 if __name__ == '__main__':
     main()

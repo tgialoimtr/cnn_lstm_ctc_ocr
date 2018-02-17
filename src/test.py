@@ -24,7 +24,7 @@ import model
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('model','../data/model',
+tf.app.flags.DEFINE_string('model','../data/model_version5/',
                           """Directory for model checkpoints""")
 tf.app.flags.DEFINE_string('output','test',
                           """Sub-directory of model for test summary events""")
@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_string('device','/gpu:0',
 
 tf.app.flags.DEFINE_string('test_path','../data/',
                            """Base directory for test/validation data""")
-tf.app.flags.DEFINE_string('filename_pattern','val/words-*',
+tf.app.flags.DEFINE_string('filename_pattern','test/words-*',
                            """File pattern for input data""")
 tf.app.flags.DEFINE_integer('num_input_threads',4,
                           """Number of readers for input data""")

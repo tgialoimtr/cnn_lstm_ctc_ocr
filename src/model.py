@@ -17,17 +17,68 @@
 import tensorflow as tf
 from tensorflow.contrib import learn
 
-# Layer params:   Filts K  Padding  Name     BatchNorm?
-layer_params = [ [  64, 3, 'valid', 'conv1', False], 
-                 [  64, 3, 'same',  'conv2', True], # pool
-                 [ 128, 3, 'same',  'conv3', False], 
-                 [ 128, 3, 'same',  'conv4', True], # hpool
-                 [ 256, 3, 'same',  'conv5', False],
-                 [ 256, 3, 'same',  'conv6', True], # hpool
-                 [ 512, 3, 'same',  'conv7', False], 
-                 [ 512, 3, 'same',  'conv8', True]] # hpool 3
+
+#Layer params:   Filts K  Padding  Name     BatchNorm?
+#model
+#layer_params = [ [  64, 3, 'valid', 'conv1', False], 
+#                 [  64, 3, 'same',  'conv2', True], # pool
+#                 [ 128, 3, 'same',  'conv3', False], 
+#                 [ 128, 3, 'same',  'conv4', True], # hpool
+#                 [ 256, 3, 'same',  'conv5', False],
+#                 [ 256, 3, 'same',  'conv6', True], # hpool
+#                 [ 512, 3, 'same',  'conv7', False], 
+#                 [ 512, 3, 'same',  'conv8', True]] # hpool 3
+#
+#rnn_size = 2**10
+
+#model_version3
+#layer_params = [ [  32, 3, 'valid', 'conv1', False], 
+#                 [  32, 3, 'same',  'conv2', True], # pool
+#                 [ 64, 3, 'same',  'conv3', False], 
+#                 [ 64, 3, 'same',  'conv4', True], # hpool
+#                 [ 128, 3, 'same',  'conv5', False],
+#                 [ 128, 3, 'same',  'conv6', True], # hpool
+#                 [ 256, 3, 'same',  'conv7', False], 
+#                 [ 256, 3, 'same',  'conv8', True]] # hpool 3
+#
+#rnn_size = 2**10
+
+#model_verion4 or version4_autoapprove or version4_total
+layer_params = [ [  32, 3, 'valid', 'conv1', False],
+                 [  32, 3, 'same',  'conv2', True], # pool
+                 [ 64, 3, 'same',  'conv3', False],
+                 [ 64, 3, 'same',  'conv4', True], # hpool
+                 [ 128, 3, 'same',  'conv5', False],
+                 [ 128, 3, 'same',  'conv6', True], # hpool
+                 [ 256, 3, 'same',  'conv7', False],
+                 [ 256, 3, 'same',  'conv8', True]] # hpool 3
 
 rnn_size = 2**9
+
+#model_version5 # LSTM==> GRU
+#layer_params = [ [  64, 3, 'valid', 'conv1', False], 
+#                 [  64, 3, 'same',  'conv2', True], # pool
+#                 [ 128, 3, 'same',  'conv3', False], 
+#                 [ 128, 3, 'same',  'conv4', True], # hpool
+#                 [ 256, 3, 'same',  'conv5', False],
+#                 [ 256, 3, 'same',  'conv6', True], # hpool
+#                 [ 512, 3, 'same',  'conv7', False], 
+#                 [ 512, 3, 'same',  'conv8', True]] # hpool 3
+#
+#rnn_size = 2**10
+
+#model_version6
+#layer_params = [ [  64, 3, 'valid', 'conv1', False],
+#                 [  64, 3, 'same',  'conv2', True], # pool
+#                 [ 128, 3, 'same',  'conv3', False],
+#                 [ 128, 3, 'same',  'conv4', True], # hpool
+#                 [ 256, 3, 'same',  'conv5', False],
+#                 [ 256, 3, 'same',  'conv6', True], # hpool
+#                 [ 512, 3, 'same',  'conv7', False],
+#                 [ 512, 3, 'same',  'conv8', True]] # hpool 3
+#
+#rnn_size = 2**8
+
 dropout_rate = 0.5
 
 def conv_layer(bottom, params, training ):
@@ -119,16 +170,20 @@ def rnn_layer(bottom_sequence,sequence_length,rnn_size,scope):
     weight_initializer = tf.truncated_normal_initializer(stddev=0.01)
     
     # Default activation is tanh
-    cell_fw = tf.contrib.rnn.LSTMCell( rnn_size, 
-                                       initializer=weight_initializer)
-    cell_bw = tf.contrib.rnn.LSTMCell( rnn_size, 
-                                       initializer=weight_initializer)
+    cell_fw = tf.contrib.rnn.GRUCell( rnn_size, 
+                                       #initializer=weight_initializer)
+                                       kernel_initializer=weight_initializer,
+                                       bias_initializer=weight_initializer)
+    cell_bw = tf.contrib.rnn.GRUCell( rnn_size, 
+                                       #initializer=weight_initializer)
+                                       kernel_initializer=weight_initializer, 
+                                       bias_initializer=weight_initializer)
     # Include?
     #cell_fw = tf.contrib.rnn.DropoutWrapper( cell_fw, 
     #                                         input_keep_prob=dropout_rate )
     #cell_bw = tf.contrib.rnn.DropoutWrapper( cell_bw, 
     #                                         input_keep_prob=dropout_rate )
-    
+    #with tf.device('/device:GPU:0'):    
     rnn_output,_ = tf.nn.bidirectional_dynamic_rnn(
         cell_fw, cell_bw, bottom_sequence,
         sequence_length=sequence_length,
@@ -138,6 +193,7 @@ def rnn_layer(bottom_sequence,sequence_length,rnn_size,scope):
     
     # Concatenation allows a single output op because [A B]*[x;y] = Ax+By
     # [ paddedSeqLen batchSize 2*rnn_size]
+    #with tf.device('/device:GPU:0'):
     rnn_output_stack = tf.concat(rnn_output,2,name='output_stack')
     
     return rnn_output_stack
@@ -154,8 +210,9 @@ def rnn_layers(features, sequence_length, num_classes):
     with tf.variable_scope("rnn"):
         # Transpose to time-major order for efficiency
         rnn_sequence = tf.transpose(features, perm=[1, 0, 2], name='time_major')
-        rnn1 = rnn_layer(rnn_sequence, sequence_length, rnn_size, 'bdrnn1')
-        rnn2 = rnn_layer(rnn1, sequence_length, rnn_size, 'bdrnn2')
+        rnn1 = rnn_layer(rnn_sequence, sequence_length, 500, 'bdrnn1')
+        rnn2 = rnn_layer(rnn1, sequence_length, 100, 'bdrnn2')
+        #with tf.device('/device:GPU:0'):
         rnn_logits = tf.layers.dense( rnn2, num_classes+1, 
                                       activation=logit_activation,
                                       kernel_initializer=weight_initializer,
