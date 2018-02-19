@@ -12,18 +12,10 @@ from ocrolib import lstm, normalize_text
 from ocrolib import psegutils,morph,sl
 from ocrolib.toplevel import *
 import time
-from time import sleep
 
 import threading
+from linepredictor import TensorFlowPredictor
 
-# This is a placeholder for a Google-internal import.
-
-from grpc.beta import implementations
-import numpy as np
-import tensorflow as tf
-
-from tensorflow_serving.apis import predict_pb2
-from tensorflow_serving.apis import prediction_service_pb2
        
 class obj:
     def __init__(self):
@@ -49,12 +41,6 @@ args.model = '/home/loitg/workspace/receipttest/model/receipt-model-460-700-0059
 args.inputdir = '/root/ocrapp/tmp/cleanResult/'
 args.connect = 1
 args.noise = 8
-
-out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 `~!@#$%^&*()-=_+[]{};'\\:\"|,./<>?"
-def _get_string(labels):
-    """Transform an 1D array of labels into the corresponding character string"""
-    string = ''.join([out_charset[c] for c in labels])
-    return string
 
 def summarize(a):
     b = a.ravel()
@@ -159,77 +145,6 @@ def pre_check_line(oriline):
     if n > 15:
         return False
     return True
-
-class TensorFlowPredictor(object):
-    def __init__(self, hostport):
-        self.host, self.port = hostport.split(':')
-        self.channel = implementations.insecure_channel(self.host, int(self.port))
-        self.stub = prediction_service_pb2.beta_create_PredictionService_stub(self.channel)
-    
-#         self._num_tests = num_tests
-#         self._concurrency = concurrency
-#         self._error = 0
-#         self._done = 0
-#         self._active = 0
-#         self._condition = threading.Condition()
-    
-    def inc_error(self):
-        with self._condition:
-            self._error += 1
-            
-    def predict_batch(self, image_list):
-        result = {}
-        for i, image in enumerate(image_list):
-            request = predict_pb2.PredictRequest()
-            request.model_spec.name = 'clreceipt'
-            request.model_spec.signature_name = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-            request.inputs['images'].CopyFrom(
-                tf.contrib.util.make_tensor_proto(image, shape=image.shape))
-            request.inputs['width'].CopyFrom(
-            tf.contrib.util.make_tensor_proto(image.shape[1], shape=[]))
-            result_future = self.stub.Predict.future(request, 300.0)  # 10 secs timeout
-            
-            def _callback(result_future0, i=i):
-                exception = result_future0.exception()
-                if exception:
-    #                 self.error_count += 1
-                    print(exception)
-                else:
-                    sys.stdout.write(str(i))
-                    sys.stdout.flush()
-                    lobprobs = (numpy.array(result_future0.result().outputs['output0'].float_val))
-                    responses = []
-                    for j in range(1,4):
-                        responses.append(numpy.array(
-                            result_future0.result().outputs['output'+str(j)].int64_val))
-                    labels = _get_string(responses[0])
-                    result[i] = labels
-            print('push ' + str(i))
-            result_future.add_done_callback(_callback)
-        while len(result) < len(image_list):
-            sleep(0.3)
-            print('wait')
-        return result
-     
-class Predictor:
-    def __init__(self):
-        self.network = ocrolib.load_object(args.model,verbose=1)
-        for x in self.network.walk(): x.postLoad()
-        for x in self.network.walk():
-            if isinstance(x,lstm.LSTM):
-                x.allocate(5000)
-        self.lnorm = getattr(self.network,"lnorm",None)
-
-    def predict(self, line):
-        temp = amax(line)-line
-        temp = temp*1.0/amax(temp)
-        self.lnorm.measure(temp)
-        line = self.lnorm.normalize(line,cval=amax(line))
-        line = lstm.prepare_line(line,args.pad)
-        pred = self.network.predictString(line)
-        pred = ocrolib.normalize_text(pred)
-        return pred
-
 
 def DSHOW(title,image):
     if not args.debug: return
