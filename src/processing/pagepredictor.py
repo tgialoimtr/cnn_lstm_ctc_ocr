@@ -14,7 +14,7 @@ from ocrolib.toplevel import *
 import time
 
 import threading
-from linepredictor import TensorFlowPredictor
+from linepredictor import BatchLinePredictor
 
        
 class obj:
@@ -249,9 +249,9 @@ def extract_line(image,linedesc,pad=5):
         return None
 
 class PagePredictor:
-    def __init__(self, server_addr):
+    def __init__(self, localserver):
 #         self.lock = threading.Lock()
-        self.linepredictor = TensorFlowPredictor(server_addr)
+        self.linepredictor = BatchLinePredictor(localserver)
     
     def ocrImage(self, imgpath):
         tt=time.time()

@@ -6,6 +6,7 @@ Created on Feb 19, 2018
 # This is a placeholder for a Google-internal import.
 import sys
 from time import sleep, time
+from multiprocessing import Queue
 
 from grpc.beta import implementations
 import numpy as np
@@ -16,13 +17,7 @@ from tensorflow_serving.apis import prediction_service_pb2
 from tensorflow.contrib.batching.ops.gen_batch_ops import batch
 
 from weinman import model, mjsynth
-from weinman.mjsynth import out_charset
-
-# out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 `~!@#$%^&*()-=_+[]{};'\\:\"|,./<>?"
-def _get_string(labels):
-    """Transform an 1D array of labels into the corresponding character string"""
-    string = ''.join([out_charset[c] for c in labels])
-    return string
+from weinman.validate import *
 
 
 class TensorFlowPredictor(object):
@@ -80,45 +75,81 @@ class TensorFlowPredictor(object):
 class BatchLinePredictor(object):
     def __init__(self, server):
 #         self.lock = threading.Lock()
-        self.pushq, self.getq = server.register()
+        self.clientid, self.putq, self.getq = server.register()
         
     def predict(self, img_list):
         for i, img in enumerate(img_list):
-            self.pushq.push((str(i), time(), img))
+            self.putq.put((str(i), time(), img))
+        pred = {}
+        waitcount = 0
         while True:
-            imgid, img = self.getq.get()
-            #
-            sleep(0.5)
+            topqueue = self.getq.get()
+            if topqueue is not None:
+                imgid, txt = topqueue
+                pred[int(imgid)] = txt
+                if len(pred) == len(img_list):
+                    return pred
+            else:
+                sleep(0.5)
+                waitcount += 1
+                if waitcount > 100:
+                    return pred
         
 class Bucket(object):
-    def __init__(self, maxtime, maxsize):
+    def __init__(self, maxtime, maxsize, widthrange):
         self.maxtime = maxtime
         self.maxsize = maxsize
+        self.widthrange = widthrange
+        self.imgs = []
+        self.widths = []
+        self.infos = []
+        self.oldesttime = None
+
     
     def addImgToBucket(self, clientid, imgid, imgtime, img):
-        return True
+        if img.shape[1] > self.widthrange[0] and img.shape[1] <= self.widthrange[1]:
+            newimg = cv2.copyMakeBorder(img, right=self.widthrange[1]-img.shape[1], value=0)
+            print 'reshape before bucket ', newimg.shape
+            self.imgs.append(newimg)
+            self.widths.append(img.shape[1])
+            self.infos.append((clientid, imgid))
+            if self.oldesttime is None or imgtime < self.oldesttime:
+                self.oldesttime = imgtime
+            return True
+        else:
+            return False
     
     
     def getBatch(self):
         ready = False
-        batch = None
-        #check batch ready
-        #if ready, remove and return
-        if ready:
-            return batch
+        if len(self.imgs) > self.maxsize or (time() - self.oldesttime) > self.maxtime:
+            batch = np.array(self.imgs)
+            widths = np.array(self.widths)
+            infos = self.infos
+            self.imgs = []
+            self.widths = []
+            self.infos = []
+            self.oldesttime = None
+            return infos, batch, widths
         else:
             return None
 
-class LinePredictorServer(object):
+class LocalServer(object):
     def __init__(self, modeldir):
-        self.client_inputs = []
-        self.client_outputs = []
+        self.client_inputs = {}
+        self.client_outputs = {}
         self.buckets = []
         #load graph
         self.graph = None
+        self.maxclientid = 0
+        self.modeldir = modeldir
     
-    def register(self, clientid):
-        self.client_inputs
+    def register(self):
+        self.maxclientid += 1
+        clientid = str(self.maxclientid)
+        self.client_inputs[clientid] = Queue()
+        self.client_outputs[clientid] = Queue()
+        return clientid, self.client_inputs[clientid], self.client_outputs[clientid]
         
     def run(self):
         with tf.Graph().as_default():
@@ -143,18 +174,23 @@ class LinePredictorServer(object):
             with tf.Session(config=session_config) as sess:
             
                 sess.run(init_op)
-                restore_model(sess, _get_checkpoint()) # Get latest checkpoint
+                restore_model(sess, _get_checkpoint(self.modeldir)) # Get latest checkpoint
                 while True:
-                    for id, clientq in self.client.inputs.iteritems():
+                    for id, clientq in self.client_inputs.iteritems():
                         imgid, imgtime, img = clientq.get()
                         self.addImgToBucket(id, imgid, imgtime, img)
                     
                     for bucket in self.buckets:
-                        batch = bucket.getBatch()
-                        if batch is not None:
-                                pass
-                
-        
+                        bckt = bucket.getBatch()
+                        if bckt is not None:
+                            infos, batch, widths = bckt
+                            p = sess.run(predictions,{ image: batch, width: widths} )       
+                            for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
+                                txt = p[0][i,:]
+                                txt = [i for i in txt if i >= 0]
+                                txt = _get_string(txt)
+                                self.client_outputs[clientid].put((imgid, txt))
+                            
     
 if __name__ == '__main__':
     pass

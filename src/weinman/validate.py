@@ -88,7 +88,7 @@ def _get_output(rnn_logits,sequence_length):
                                                    beam_width=128,
                                                    top_paths=3,
                                                    merge_repeated=False)
-    dts = [tf.sparse_tensor_to_dense(dt) for dt in predictions]
+    dts = [tf.sparse_tensor_to_dense(dt, default_value=-1) for dt in predictions]
     return dts
 
 
@@ -101,9 +101,9 @@ def _get_session_config():
     return config
 
 
-def _get_checkpoint():
+def _get_checkpoint(modeldir=FLAGS.model):
     """Get the checkpoint path from the given model output directory"""
-    ckpt = tf.train.get_checkpoint_state(FLAGS.model)
+    ckpt = tf.train.get_checkpoint_state(modeldir)
 
     if ckpt and ckpt.model_checkpoint_path:
         ckpt_path=ckpt.model_checkpoint_path
