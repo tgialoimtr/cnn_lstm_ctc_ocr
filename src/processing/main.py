@@ -22,15 +22,14 @@ if __name__ == "__main__":
 #                 rs.flush()
 
     sys.argv = ['python', 'localhost:9000', '/home/loitg/Downloads/complex-bg/0.JPG']
-    server = LocalServer('/home/loitg/debugtf/model_version5/')
+    server = LocalServer('/home/loitg/debugtf/model_version4_total/')
     page_read = PagePredictor(server)
 
     p = Process(target=runserver, args=(server,))
     p.start()
-    sleep(5000)
-    
+    sleep(4)
+    print 'start pushing image'
     ret = page_read.ocrImage(sys.argv[2])
     print ret   
-    print(time.time() -tt)
 
     p.join()   

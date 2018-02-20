@@ -5,8 +5,10 @@ Created on Feb 19, 2018
 '''
 # This is a placeholder for a Google-internal import.
 import sys
+import cv2
 from time import sleep, time
 from multiprocessing import Queue
+from Queue import Empty, Full
 
 from grpc.beta import implementations
 import numpy as np
@@ -14,10 +16,8 @@ import tensorflow as tf
 
 from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_service_pb2
-from tensorflow.contrib.batching.ops.gen_batch_ops import batch
 
-from weinman import model, mjsynth
-from weinman.validate import *
+from weinman import model, mjsynth, validate
 
 
 class TensorFlowPredictor(object):
@@ -62,7 +62,7 @@ class TensorFlowPredictor(object):
                     for j in range(1,4):
                         responses.append(np.array(
                             result_future0.result().outputs['output'+str(j)].int64_val))
-                    labels = _get_string(responses[0])
+                    labels = validate._get_string(responses[0])
                     result[i] = labels
             print('push ' + str(i))
             result_future.add_done_callback(_callback)
@@ -77,21 +77,27 @@ class BatchLinePredictor(object):
 #         self.lock = threading.Lock()
         self.clientid, self.putq, self.getq = server.register()
         
-    def predict(self, img_list):
+    def predict_batch(self, img_list):
+        while True:
+            try:
+                self.putq.get(block=False)
+            except Empty:
+                break
         for i, img in enumerate(img_list):
-            self.putq.put((str(i), time(), img))
+            print(str(time()) + ': putting ' + str(img.shape) + str(i) + ' to queue put')
+            self.putq.put((str(i), time(), img), block=True)
         pred = {}
         waitcount = 0
         while True:
-            topqueue = self.getq.get()
-            if topqueue is not None:
+            try:
+                topqueue = self.getq.get(timeout=0.5)
                 imgid, txt = topqueue
                 pred[int(imgid)] = txt
                 if len(pred) == len(img_list):
                     return pred
-            else:
-                sleep(0.5)
+            except Empty:
                 waitcount += 1
+                print(str(time()) + ': queue get ' + self.clientid + ' empty')
                 if waitcount > 100:
                     return pred
         
@@ -108,8 +114,12 @@ class Bucket(object):
     
     def addImgToBucket(self, clientid, imgid, imgtime, img):
         if img.shape[1] > self.widthrange[0] and img.shape[1] <= self.widthrange[1]:
-            newimg = cv2.copyMakeBorder(img, right=self.widthrange[1]-img.shape[1], value=0)
-            print 'reshape before bucket ', newimg.shape
+            newimg = cv2.copyMakeBorder(img, top=0, bottom=0, left=0, right=self.widthrange[1]-img.shape[1], borderType=cv2.BORDER_CONSTANT, value=0)
+            if len(newimg.shape) < 3:
+                newimg = newimg[:,:,np.newaxis]
+            else:
+                newimg = newimg[:,:,1]
+            print(str(time()) + ': reshape before bucket ' + str(newimg.shape))
             self.imgs.append(newimg)
             self.widths.append(img.shape[1])
             self.infos.append((clientid, imgid))
@@ -121,7 +131,7 @@ class Bucket(object):
     
     
     def getBatch(self):
-        ready = False
+        if len(self.imgs) == 0: return None
         if len(self.imgs) > self.maxsize or (time() - self.oldesttime) > self.maxtime:
             batch = np.array(self.imgs)
             widths = np.array(self.widths)
@@ -139,7 +149,8 @@ class LocalServer(object):
         self.client_inputs = {}
         self.client_outputs = {}
         self.buckets = []
-        #load graph
+        for w in range(32, 1000,32):
+            self.buckets.append(Bucket(20,10,(w,w+32)))
         self.graph = None
         self.maxclientid = 0
         self.modeldir = modeldir
@@ -154,42 +165,62 @@ class LocalServer(object):
     def run(self):
         with tf.Graph().as_default():
             with tf.device('/device:CPU:0'):
-                image,width = _get_input() # Placeholder tensors
+                image,width = validate._get_input() # Placeholder tensors
      
-                proc_image = _preprocess_image(image)
+                proc_image = validate._preprocess_image(image)
     
             with tf.device('/device:CPU:0'):
                 features,sequence_length = model.convnet_layers( proc_image, width, 
-                                                                 mode)
+                                                                 validate.mode)
                 logits = model.rnn_layers( features, sequence_length,
                                            mjsynth.num_classes() )
             with tf.device('/device:CPU:0'):
-                predictions = _get_output( logits,sequence_length)
+                predictions = validate._get_output( logits,sequence_length)
     
-                session_config = _get_session_config()
-                restore_model = _get_init_trained()
+                session_config = validate._get_session_config()
+                restore_model = validate._get_init_trained()
             
                 init_op = tf.group( tf.global_variables_initializer(),
                                 tf.local_variables_initializer()) 
             with tf.Session(config=session_config) as sess:
             
                 sess.run(init_op)
-                restore_model(sess, _get_checkpoint(self.modeldir)) # Get latest checkpoint
+                restore_model(sess, validate._get_checkpoint(self.modeldir)) # Get latest checkpoint
+                print(str(time()) + 'server started, waiting image ...') 
                 while True:
-                    for id, clientq in self.client_inputs.iteritems():
-                        imgid, imgtime, img = clientq.get()
-                        self.addImgToBucket(id, imgid, imgtime, img)
+                    for clientid, clientq in self.client_inputs.iteritems():
+                        try:
+                            imgid, imgtime, img = clientq.get(block=False)
+                            success_count = 0
+                            for bucket in self.buckets:
+                                success = bucket.addImgToBucket(clientid, imgid, imgtime, img)
+                                if success: 
+                                    success_count += 1
+                                    print(str(time()) + ': image ' + str(img.shape) + ' add successful to bucket ' + str(bucket.widthrange))
+                            assert(success_count==1)
+                        except Empty:
+                            print(str(time()) + ': queue put ' + clientid + ' empty')
+                            sleep(0.1)
+
                     
                     for bucket in self.buckets:
                         bckt = bucket.getBatch()
                         if bckt is not None:
                             infos, batch, widths = bckt
+                            print(str(time()) + 'BATCH INFO --------------')
+                            print infos
+                            print batch.shape
+                            print widths
+                            print '-------------------'
                             p = sess.run(predictions,{ image: batch, width: widths} )       
                             for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
                                 txt = p[0][i,:]
                                 txt = [i for i in txt if i >= 0]
-                                txt = _get_string(txt)
-                                self.client_outputs[clientid].put((imgid, txt))
+                                txt = validate._get_string(txt)
+                                try:
+                                    self.client_outputs[clientid].put((imgid, txt), block=False)
+                                except Full:
+                                    print(str(time()) + ': queue get ' + clientid + ' full')
                             
     
 if __name__ == '__main__':
