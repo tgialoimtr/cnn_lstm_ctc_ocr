@@ -7,7 +7,6 @@ Created on Feb 19, 2018
 import sys
 import cv2
 from time import sleep, time
-from multiprocessing import Queue
 from Queue import Empty, Full
 
 from grpc.beta import implementations
@@ -84,7 +83,7 @@ class BatchLinePredictor(object):
             except Empty:
                 break
         for i, img in enumerate(img_list):
-            print(str(time()) + ': putting ' + str(img.shape) + str(i) + ' to queue put')
+#             print(str(time()) + ': putting ' + str(img.shape) + str(i) + ' to queue put ' + self.clientid)
             self.putq.put((str(i), time(), img), block=True)
         pred = {}
         waitcount = 0
@@ -97,8 +96,13 @@ class BatchLinePredictor(object):
                     return pred
             except Empty:
                 waitcount += 1
-                print(str(time()) + ': queue get ' + self.clientid + ' empty')
-                if waitcount > 100:
+#                 print(str(time()) + ': queue get ' + self.clientid + ' empty')
+                if waitcount > 300:
+                    for i in range(len(img_list)):
+                        i = str(i)
+                        if i not in pred:
+                            pred[i] = ''
+                            print 'PREDICTION TOO LONG, WILL RETURN EMPTY STRING !!!'
                     return pred
         
 class Bucket(object):
@@ -119,7 +123,6 @@ class Bucket(object):
                 newimg = newimg[:,:,np.newaxis]
             else:
                 newimg = newimg[:,:,1]
-            print(str(time()) + ': reshape before bucket ' + str(newimg.shape))
             self.imgs.append(newimg)
             self.widths.append(img.shape[1])
             self.infos.append((clientid, imgid))
@@ -145,24 +148,26 @@ class Bucket(object):
             return None
 
 class LocalServer(object):
-    def __init__(self, modeldir):
+    def __init__(self, modeldir, manager):
         self.client_inputs = {}
         self.client_outputs = {}
         self.buckets = []
         for w in range(32, 1000,32):
-            self.buckets.append(Bucket(20,10,(w,w+32)))
+            self.buckets.append(Bucket(40,8,(w,w+32)))
         self.graph = None
         self.maxclientid = 0
         self.modeldir = modeldir
+        self.manager = manager
     
     def register(self):
+        print 'register called -------------------------------------------'
         self.maxclientid += 1
         clientid = str(self.maxclientid)
-        self.client_inputs[clientid] = Queue()
-        self.client_outputs[clientid] = Queue()
+        self.client_inputs[clientid] = self.manager.Queue()
+        self.client_outputs[clientid] = self.manager.Queue()
         return clientid, self.client_inputs[clientid], self.client_outputs[clientid]
         
-    def run(self):
+    def run(self, states):
         with tf.Graph().as_default():
             with tf.device('/device:CPU:0'):
                 image,width = validate._get_input() # Placeholder tensors
@@ -187,6 +192,7 @@ class LocalServer(object):
                 sess.run(init_op)
                 restore_model(sess, validate._get_checkpoint(self.modeldir)) # Get latest checkpoint
                 print(str(time()) + 'server started, waiting image ...') 
+                states['server_started'] = True
                 while True:
                     for clientid, clientq in self.client_inputs.iteritems():
                         try:
@@ -196,10 +202,10 @@ class LocalServer(object):
                                 success = bucket.addImgToBucket(clientid, imgid, imgtime, img)
                                 if success: 
                                     success_count += 1
-                                    print(str(time()) + ': image ' + str(img.shape) + ' add successful to bucket ' + str(bucket.widthrange))
+#                                     print(str(time()) + ': image ' + str(img.shape) + ' from ' + clientid +' add successful to bucket ' + str(bucket.widthrange))
                             assert(success_count==1)
                         except Empty:
-                            print(str(time()) + ': queue put ' + clientid + ' empty')
+#                             print(str(time()) + ': queue put ' + clientid + ' empty')
                             sleep(0.1)
 
                     
@@ -207,12 +213,12 @@ class LocalServer(object):
                         bckt = bucket.getBatch()
                         if bckt is not None:
                             infos, batch, widths = bckt
-                            print(str(time()) + 'BATCH INFO --------------')
+                            tt = time()
+                            print(str(time()) + ': BATCH INFO --------------')
                             print infos
-                            print batch.shape
-                            print widths
-                            print '-------------------'
-                            p = sess.run(predictions,{ image: batch, width: widths} )       
+                            print batch.shape, np.mean(widths)
+                            p = sess.run(predictions,{ image: batch, width: widths} )
+                            print '-------------------' + str(time() - tt)    
                             for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
                                 txt = p[0][i,:]
                                 txt = [i for i in txt if i >= 0]
