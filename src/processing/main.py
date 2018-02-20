@@ -4,17 +4,25 @@ import os
 from time import sleep
 from multiprocessing import Process, Manager, Pool
 from pagepredictor import PagePredictor
-from linepredictor import LocalServer
+from server import LocalServer
+
+class DFO(object):
+    pass
+args = DFO()
+args.model_path = '/home/loitg/debugtf/model_version4_total/'
+args.imgsdir = '/home/loitg/Downloads/complex-bg/'
+args.numprocess = 2
    
 def runserver(server, states):
     server.run(states)                 
 
-def readReceipt((reader, path)):
-    print('start pushing image ' + path)
-    return reader.ocrImage(path)
-
-# if __name__ == "__main__":
-#     for 
+def readReceipt((reader, num)):
+    print('start pushing image ' + str(num))
+    for filename in os.listdir(args.imgsdir):
+        if filename[-3:].upper() == 'JPG' and hash(filename) % args.numprocess == num:
+            ret = reader.ocrImage(args.imgsdir + filename)
+            print ret
+    return None
 
 if __name__ == "__main__":
 #     pp = PagePredictor('localhost:9000')
@@ -28,30 +36,18 @@ if __name__ == "__main__":
 #                 rs.write(ret+ '\n')
 #                 rs.flush()
 
-    sys.argv = ['python', 'localhost:9000', '/home/loitg/Downloads/complex-bg/0.JPG']
     manager = Manager()
     states = manager.dict()
-    server = LocalServer('/home/loitg/debugtf/model_version4_total/', manager)
+    server = LocalServer(args.model_path, manager)
     p = Process(target=runserver, args=(server, states))
-        
-    allreceipt = []
-    for filename in os.listdir('/home/loitg/Downloads/complex-bg/'):
-        if filename[-3:] == 'JPG':
-            allreceipt.append('/home/loitg/Downloads/complex-bg/' + filename)
-#     random.sample(["some", "provider", "can", "be", "null"], 3)
-    a = allreceipt[:2]
-    readers = [PagePredictor(server) for i in range(len(a))]
+
+    readers = [PagePredictor(server) for i in range(args.numprocess)]
     
     states['server_started'] = False
     p.start()
     while not states['server_started']:
         sleep(1)   
-    pool = Pool(processes=len(a))
-    ret = pool.map(readReceipt, zip(readers, a))
-    
-    for i in range(len(a)):
-        print ret[i]
-        print '---------------------' 
-
+    pool = Pool(processes=args.numprocess)
+    pool.map(readReceipt, zip(readers, range(args.numprocess)))
 
     p.join()   
