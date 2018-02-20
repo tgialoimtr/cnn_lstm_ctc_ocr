@@ -13,6 +13,8 @@ def readReceipt((reader, path)):
     print('start pushing image ' + path)
     return reader.ocrImage(path)
 
+# if __name__ == "__main__":
+#     for 
 
 if __name__ == "__main__":
 #     pp = PagePredictor('localhost:9000')
@@ -37,7 +39,7 @@ if __name__ == "__main__":
         if filename[-3:] == 'JPG':
             allreceipt.append('/home/loitg/Downloads/complex-bg/' + filename)
 #     random.sample(["some", "provider", "can", "be", "null"], 3)
-    a = allreceipt[:4]
+    a = allreceipt[:2]
     readers = [PagePredictor(server) for i in range(len(a))]
     
     states['server_started'] = False

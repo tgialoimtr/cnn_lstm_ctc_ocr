@@ -18,6 +18,12 @@ from tensorflow_serving.apis import prediction_service_pb2
 
 from weinman import model, mjsynth, validate
 
+args = object()
+args.qget_wait_count = 100
+args.qget_wait_interval = 0.5
+args.bucket_max_size = 4
+args.bucket_max_time = 20
+
 
 class TensorFlowPredictor(object):
     def __init__(self, hostport):
@@ -89,7 +95,7 @@ class BatchLinePredictor(object):
         waitcount = 0
         while True:
             try:
-                topqueue = self.getq.get(timeout=0.5)
+                topqueue = self.getq.get(timeout=args.qget_wait_interval)
                 imgid, txt = topqueue
                 pred[int(imgid)] = txt
                 if len(pred) == len(img_list):
@@ -97,9 +103,8 @@ class BatchLinePredictor(object):
             except Empty:
                 waitcount += 1
 #                 print(str(time()) + ': queue get ' + self.clientid + ' empty')
-                if waitcount > 300:
+                if waitcount > args.qget_wait_count:
                     for i in range(len(img_list)):
-                        i = str(i)
                         if i not in pred:
                             pred[i] = ''
                             print 'PREDICTION TOO LONG, WILL RETURN EMPTY STRING !!!'
@@ -153,7 +158,7 @@ class LocalServer(object):
         self.client_outputs = {}
         self.buckets = []
         for w in range(32, 1000,32):
-            self.buckets.append(Bucket(40,8,(w,w+32)))
+            self.buckets.append(Bucket(args.bucket_max_time, args.bucket_max_size,(w,w+32)))
         self.graph = None
         self.maxclientid = 0
         self.modeldir = modeldir
@@ -179,14 +184,13 @@ class LocalServer(object):
                                                                  validate.mode)
                 logits = model.rnn_layers( features, sequence_length,
                                            mjsynth.num_classes() )
-            with tf.device('/device:CPU:0'):
                 predictions = validate._get_output( logits,sequence_length)
     
-                session_config = validate._get_session_config()
-                restore_model = validate._get_init_trained()
-            
-                init_op = tf.group( tf.global_variables_initializer(),
-                                tf.local_variables_initializer()) 
+            session_config = validate._get_session_config()
+            restore_model = validate._get_init_trained()
+        
+            init_op = tf.group( tf.global_variables_initializer(),
+                            tf.local_variables_initializer()) 
             with tf.Session(config=session_config) as sess:
             
                 sess.run(init_op)
