@@ -6,14 +6,7 @@ Created on Feb 19, 2018
 # This is a placeholder for a Google-internal import.
 from time import time
 from Queue import Empty, Full
-
-class DFO(object):
-    pass
-
-args = DFO()
-args.qget_wait_count = 200
-args.qget_wait_interval = 0.5
-    
+from common import args
     
 class BatchLinePredictor(object):
     def __init__(self, server):

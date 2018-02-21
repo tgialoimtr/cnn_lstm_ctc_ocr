@@ -68,12 +68,12 @@ def _preprocess_image(image):
     return image
 
 
-def _get_input():
+def _get_input(bucket_size):
     """Set up and return image and width placeholder tensors"""
 
     # Raw image as placeholder to be fed one-by-one by dictionary
-    image = tf.placeholder(tf.uint8, shape=[None,32, None, 1])
-    width = tf.placeholder(tf.int32,shape=[None,]) # for ctc_loss
+    image = tf.placeholder(tf.uint8, shape=[bucket_size,32, None, 1])
+    width = tf.placeholder(tf.int32,shape=[bucket_size,]) # for ctc_loss
 
     return image,width
 
@@ -83,11 +83,11 @@ def _get_output(rnn_logits,sequence_length):
        predictions: Results of CTC beacm search decoding
     """
     with tf.name_scope("test"):
-        predictions,probs = tf.nn.ctc_beam_search_decoder(rnn_logits, 
+        predictions,probs = tf.nn.ctc_greedy_decoder(rnn_logits, 
                                                    sequence_length,
-                                                   beam_width=128,
-                                                   top_paths=3,
-                                                   merge_repeated=False)
+                                                   #beam_width=128,
+                                                   #top_paths=3,
+                                                   merge_repeated=True)
     dts = [tf.sparse_tensor_to_dense(dt, default_value=-1) for dt in predictions]
     return dts
 
@@ -97,7 +97,7 @@ def _get_session_config():
     config=tf.ConfigProto(
         allow_soft_placement=True, 
         log_device_placement=False)
-
+    config.gpu_options.allow_growth = True
     return config
 
 
@@ -129,10 +129,10 @@ def _get_string(labels):
     return string
 
 def main(argv=None):
-
+    bs=3
     with tf.Graph().as_default():
         with tf.device('/device:CPU:0'):
-            image,width = _get_input() # Placeholder tensors
+            image,width = _get_input(bs) # Placeholder tensors
  
             proc_image = _preprocess_image(image)
 
@@ -164,9 +164,9 @@ def main(argv=None):
                 print line
                 # Eliminate any trailing newline from filename
                 image_data = _get_image(line.rstrip())
-                image_data = np.array([image_data]*3)
+                image_data = np.array([image_data]*bs)
                 w = image_data.shape[2]
-                ws = np.array([w]*3)
+                ws = np.array([w]*bs)
                 
                 
                 # Get prediction for single image (isa SparseTensorValue)

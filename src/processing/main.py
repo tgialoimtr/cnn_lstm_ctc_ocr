@@ -6,12 +6,7 @@ from multiprocessing import Process, Manager, Pool
 from pagepredictor import PagePredictor
 from server import LocalServer
 
-class DFO(object):
-    pass
-args = DFO()
-args.model_path = '/home/loitg/debugtf/model_version4_total/'
-args.imgsdir = '/home/loitg/Downloads/complex-bg/'
-args.numprocess = 2
+from common import args
    
 def runserver(server, states):
     server.run(states)                 
@@ -21,6 +16,7 @@ def readReceipt((reader, num)):
     for filename in os.listdir(args.imgsdir):
         if filename[-3:].upper() == 'JPG' and hash(filename) % args.numprocess == num:
             ret = reader.ocrImage(args.imgsdir + filename)
+            print filename + '-------------------------------'
             print ret
     return None
 

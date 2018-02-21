@@ -12,13 +12,7 @@ import numpy as np
 import tensorflow as tf
 
 from weinman import model, mjsynth, validate
-
-class DFO(object):
-    pass
-
-args = DFO()
-args.bucket_size = 4
-args.bucket_max_time = 20
+from common import args
         
 class Bucket(object):
     def __init__(self, maxtime, batchsize, widthrange):
@@ -84,12 +78,11 @@ class LocalServer(object):
         
     def run(self, states):
         with tf.Graph().as_default():
-            with tf.device('/device:CPU:0'):
-                image,width = validate._get_input() # Placeholder tensors
-     
-                proc_image = validate._preprocess_image(image)
-    
-            with tf.device('/device:CPU:0'):
+            image,width = validate._get_input(args.bucket_size) # Placeholder tensors
+ 
+            proc_image = validate._preprocess_image(image)
+
+            with tf.device(args.device):
                 features,sequence_length = model.convnet_layers( proc_image, width, 
                                                                  validate.mode)
                 logits = model.rnn_layers( features, sequence_length,
@@ -127,22 +120,18 @@ class LocalServer(object):
                         bckt = bucket.getBatch()
                         if bckt is not None:
                             infos, batch, widths = bckt
+                            width_mean = np.mean(widths)
                             if batch.shape[0] < args.bucket_size:
-                                print 'ADDED------------------' + str(batch.shape[0])
                                 additional_batch = np.zeros(shape=(args.bucket_size - batch.shape[0], batch.shape[1], batch.shape[2], batch.shape[3]), dtype=np.float32)
                                 additional_width = np.ones(shape=(args.bucket_size - batch.shape[0],), dtype=np.int32)*widths[0]
                                 infos += [('0','0')]*(args.bucket_size - batch.shape[0])
                                 batch = np.concatenate((batch, additional_batch))
                                 widths = np.concatenate((widths, additional_width))
-                                print batch.shape
-                                print widths.shape
-                                print len(infos)
                             tt = time()
-                            print(str(time()) + ': BATCH INFO --------------')
-                            print infos
-                            print batch.shape, np.mean(widths)
+                            print('---------------')
+                            print(str(time()) + ': BATCH INFO: ' + str(args.bucket_size - batch.shape[0]) + ',' + str(batch.shape[2]) + ',' + '{:06.2f}'.format(width_mean))
                             p = sess.run(predictions,{ image: batch, width: widths} )
-                            print '-------------------' + str(time() - tt)    
+                            print(str(time()) + ': BATCH TIME: ' + '{:06.3f}'.format(time() - tt) + ',' + '{:06.6f}'.format((time() - tt)/batch.shape[2]))
                             for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
                                 if clientid == '0': continue
                                 txt = p[0][i,:]
@@ -152,7 +141,7 @@ class LocalServer(object):
                                     self.client_outputs[clientid].put((imgid, txt), block=False)
                                 except Full:
                                     print(str(time()) + ': queue get ' + clientid + ' full')
-                            
+                     
     
 if __name__ == '__main__':
     pass
