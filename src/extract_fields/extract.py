@@ -10,16 +10,36 @@ from colorama import Fore
 # from fuzzywuzzy import fuzz
 from datetime import datetime, date, time
 from extractor import RegexExtractor, FuzzyRegexExtractor, KWDetector, ALLMONEY
-
+from common import args
+from subprocess import *
 
 class LocodeExtractor(object):
     def __init__(self, csvdb, jarfile):
-        self.csvdb = csvdb
-        self.jarfile = jarfile
+        self.csvdb = args.javapath + csvdb
+        self.jarfile = args.javapath + jarfile
+
+    def jarWrapper(self, txtfilepath):
+        process = Popen(['java', '-jar', self.jarfile, self.csvdb, txtfilepath], stdout=PIPE, stderr=PIPE)
+        ret = []
+        while process.poll() is None:
+            line = process.stdout.readline()
+            if line != '' and line.endswith('\n'):
+                ret.append(line[:-1])
+        stdout, stderr = process.communicate()
+        ret += stdout.split('\n')
+        if stderr != '':
+            ret += stderr.split('\n')
+        ret.remove('')
+        ret = ret[2]
+        if ret == 'None': ret = ''
+        return ret
+
+    def extract(self, lines, kwvalues=None):
+        with open(args.javapath + 'tempfile.txt', 'w') as tempfile:
+            for line in lines:
+                tempfile.write(line)
         
-    def recognize(self, filepath):
-        pass
-        return ''
+        return self.jarWrapper(args.javapath + 'tempfile.txt')
 
 
 month3 = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)'
@@ -54,7 +74,7 @@ class ReceiptIdExtractor(object):
                     sortedlist.append((1.0*numdigit/len(receiptid), receiptid))
             sortedlist.sort(reverse=True)
             if len(sortedlist) > 0:
-                return sortedlist[0]
+                return sortedlist[0][1]
             else:
                 return idlist[0]
         elif len(idlist) ==1:
@@ -72,20 +92,24 @@ class ReceiptIdExtractor(object):
             if pos >= 0:
                 return m
         ids0 = kwvalues['receiptid']
+        ids0 = [x[1] for x in ids0 if x is not None]
         if len(ids0) > 0:
             return self.mostPotential(ids0)
-import os, cv2        
-def show(imgpath):
-    print('showing' + imgpath)
-    img = cv2.imread(imgpath)
-    h, w = img.shape[:2]
-    newwidth = int(950.0 * w / h)
-    if newwidth > 300:
-        img = cv2.resize(img, (newwidth, 900))
-        cv2.imshow('kk', img)
-        cv2.waitKey(500)
-    else:
-        os.system('xdg-open ' + imgpath)
+        else:
+            return ''
+        
+# import os, cv2        
+# def show(imgpath):
+#     print('showing' + imgpath)
+#     img = cv2.imread(imgpath)
+#     h, w = img.shape[:2]
+#     newwidth = int(950.0 * w / h)
+#     if newwidth > 300:
+#         img = cv2.resize(img, (newwidth, 900))
+#         cv2.imshow('kk', img)
+#         cv2.waitKey(500)
+#     else:
+#         os.system('xdg-open ' + imgpath)
           
 class TotalExtractor(object):
     '''
@@ -185,55 +209,68 @@ class TotalExtractor(object):
         print(str(assertkwvalues['cash']) + '===' + str(len(kwvalues['cash'])))
         self.features.sort(reverse=True)
     
-    def printTopFeatures(self):
-        temp = self.features[:10]
-        for val1, intotal, valrand, multiple, inrange, insubtotal, i, m in temp:
-            print(Fore.GREEN + 'val:' + str(val1) + 
-                  ' ,intotal:' + str(intotal) + 
-                  ' ,valrand:' + str(valrand) + 
-                  ' ,multi:' + str(multiple) +
-                  ' ,inrange:' + str(inrange) + 
-                  ' ,insub:' + str(insubtotal) + 
-                  ' ,val:' + str(i) + '_' + m
-                  )
+    def extractPrice(self):
+#         temp = self.features[:10]
+#         for val1, intotal, valrand, multiple, inrange, insubtotal, i, m in temp:
+#             print(Fore.GREEN + 'val:' + str(val1) + 
+#                   ' ,intotal:' + str(intotal) + 
+#                   ' ,valrand:' + str(valrand) + 
+#                   ' ,multi:' + str(multiple) +
+#                   ' ,inrange:' + str(inrange) + 
+#                   ' ,insub:' + str(insubtotal) + 
+#                   ' ,val:' + str(i) + '_' + m
+#                   )
         
-    
-    
-    def extract(self, lines, kwvalues):
-        def printList(name, l, col):
-            print(col + name + ': ', end='')
-            for val in l:
-                if type(val) == float:
-                    print('{:05.2f}'.format(val), end=',')
+        if len(self.features) == 0:
+            return 0.0
+        elif len(self.features) == 1:
+            return float(self.features[0][7])
+        else:
+            top = self.features[:2]
+            if top[0][:6] == top[0][:6]:
+                if self.similar(top[0][7], top[1][7]):
+                    return float(top[0][7])
                 else:
-                    print(val, end=',')
-            print('\n', end='')
+                    return 0.0
+            else:
+                return float(top[0][7])
+            
+            
+    def extract(self, lines, kwvalues):
+#         def printList(name, l, col):
+#             print(col + name + ': ', end='')
+#             for val in l:
+#                 if type(val) == float:
+#                     print('{:05.2f}'.format(val), end=',')
+#                 else:
+#                     print(val, end=',')
+#             print('\n', end='')
         
         self.preprocessLines(lines)
         self.buildFeatures(kwvalues)
-        self.printTopFeatures()
+        return self.extractPrice()
 
-        totals = kwvalues['total']
-        gsts = kwvalues['gst']
-        svcs = kwvalues['servicecharge']
-        subtotals = kwvalues['subtotal']
-        cashes = kwvalues['cash']
-#         changedue = kwvalues['changedue']
-             
-        totals = [x[1] for x in totals]
-        printList('TOTAL', totals, Fore.RED)
-        totalfromgst = [float(x[1])/0.06542 for x in gsts]
-        printList('GST', totalfromgst, Fore.GREEN)
-        totalfromsvc = [float(x[1])/0.08500 for x in svcs]
-        printList('SVC', totalfromsvc, Fore.BLUE)
-         
-        cashes.sort()
-        fromcash = [x[1] for x in cashes]
-        printList('Cashes', fromcash, Fore.MAGENTA)
-        subtotals.sort()
-        subtotals = [x[1] for x in subtotals]
-        printList('Subtotal', subtotals, Fore.YELLOW)
-        show('/home/loitg/Downloads/part1/' + fn)
+#         totals = kwvalues['total']
+#         gsts = kwvalues['gst']
+#         svcs = kwvalues['servicecharge']
+#         subtotals = kwvalues['subtotal']
+#         cashes = kwvalues['cash']
+# #         changedue = kwvalues['changedue']
+#              
+#         totals = [x[1] for x in totals]
+#         printList('TOTAL', totals, Fore.RED)
+#         totalfromgst = [float(x[1])/0.06542 for x in gsts]
+#         printList('GST', totalfromgst, Fore.GREEN)
+#         totalfromsvc = [float(x[1])/0.08500 for x in svcs]
+#         printList('SVC', totalfromsvc, Fore.BLUE)
+#          
+#         cashes.sort()
+#         fromcash = [x[1] for x in cashes]
+#         printList('Cashes', fromcash, Fore.MAGENTA)
+#         subtotals.sort()
+#         subtotals = [x[1] for x in subtotals]
+#         printList('Subtotal', subtotals, Fore.YELLOW)
+#         show('/home/loitg/Downloads/part1/' + fn)
 
                     
                     
@@ -255,58 +292,57 @@ class DateExtractor(object):
     def extract(self, lines, kwvalues=None):
         date_cands = []
         for i, line in enumerate(lines):
-            print(Fore.WHITE + line)
+#             print(Fore.WHITE + line)
             line = self.charToNum(line)
             for j, extr in enumerate(self.dateextrs):
                 
                 pos, cand_d_str = extr.recognize(line)
                 if pos >=0:
                     cand_d_str = self.cleanTimeString(cand_d_str)
-                    print(Fore.YELLOW + 'with raw string ' + cand_d_str)
+#                     print(Fore.YELLOW + 'with raw string ' + cand_d_str)
                     for dateformat in self.rawdatelist[j][2]:
                         try:
-                            print(Fore.YELLOW + 'trying ' + dateformat)
+#                             print(Fore.YELLOW + 'trying ' + dateformat)
                             cand_d = datetime.strptime(cand_d_str, dateformat).date()
                         except Exception:
                             continue
                         today = date(2017,8,2) #datetime.today().date()
                         if cand_d <= today:
-                            print(Fore.RED + str((today - cand_d).days) + ': ' + str(cand_d))
+#                             print(Fore.RED + str((today - cand_d).days) + ': ' + str(cand_d))
                             date_cands.append([(today - cand_d).days, cand_d, i])
         date_cands.sort()
-        print('--------------------')
-#         if len(date_cands) == 0:
-#             return None
-#         choosen_date = date_cands[0][1]
-#         choosen_date_lines = [x[2] for x in date_cands if x[0]==date_cands[0][0]]
+#         print('--------------------')
+        if len(date_cands) == 0:
+            return None
+        choosen_date = date_cands[0][1]
+        choosen_date_lines = [x[2] for x in date_cands if x[0]==date_cands[0][0]]
         time_cands = []
         for i, line in enumerate(lines):
-            print(Fore.WHITE + line)
+#             print(Fore.WHITE + line)
             line = self.charToNum(line)
             for j, extr in enumerate(self.timeextrs):
                 pos, cand_t_str = extr.recognize(line)
                 if pos >=0:
                     cand_t_str = self.cleanTimeString(cand_t_str)
-                    print(Fore.YELLOW + 'with raw string ' + cand_t_str)
+#                     print(Fore.YELLOW + 'with raw string ' + cand_t_str)
                     for timeformat in self.rawtimelist[j][2]:
                         try:
-                            print(Fore.YELLOW + 'trying ' + timeformat)
+#                             print(Fore.YELLOW + 'trying ' + timeformat)
                             cand_t = datetime.strptime(cand_t_str, timeformat).time()
                         except Exception:
                             continue
-                        print(Fore.RED + str(cand_t))
+#                         print(Fore.RED + str(cand_t))
                         time_cands.append((i,cand_t))
-#         if len(time_cands) == 0:
-#             return datetime.combine(choosen_date, time(0,0,0))
-#         sorted_time_cands = []
-#         for i, cand_t in time_cands:
-#             to_chosen_date =   min([abs(i - i_cd) for i_cd in choosen_date_lines])   
-#             to_chosen_date = min(to_chosen_date, 2)
-#             to_chosen_date = -to_chosen_date
-#             sorted_time_cands.append((to_chosen_date, cand_t))
-#         sorted_time_cands.sort(reversed=True)
-#         return datetime.combine(choosen_date, sorted_time_cands[0][1])
-        return None
+        if len(time_cands) == 0:
+            return datetime.combine(choosen_date, time(0,0,0))
+        sorted_time_cands = []
+        for i, cand_t in time_cands:
+            to_chosen_date =   min([abs(i - i_cd) for i_cd in choosen_date_lines])   
+            to_chosen_date = min(to_chosen_date, 2)
+            to_chosen_date = -to_chosen_date
+            sorted_time_cands.append((to_chosen_date, cand_t))
+        sorted_time_cands.sort(reverse=True)
+        return datetime.combine(choosen_date, sorted_time_cands[0][1])
 
 if __name__ == '__main__':
     allrs = {}
@@ -325,16 +361,30 @@ if __name__ == '__main__':
                 allrs[fn].append(temp)
     
     kwt = KWDetector()
-    total = TotalExtractor()
-    currentfile = '1501686048201_bf50f277-d262-4dd5-aea1-3777c7e86e22.JPG'
+    date_extr = DateExtractor()
+    total_extr = TotalExtractor()
+    id_extr = ReceiptIdExtractor()
+    locode_extr = LocodeExtractor('top20_1.csv', 'location_nn.jar')
+    currentfile = '1501682910546_dea1e329-695e-4c05-a750-f04f168b12d5.JPG'
     for fn, lines in allrs.iteritems():
         if currentfile is not None:
             if fn != currentfile:
                 continue
             else:
                 currentfile = None
-        kwt.detect(lines)
-        total.extract(lines, kwt.kwExtractor.values)
+                
+        locode0 = locode_extr.extract(lines)
+        
+#         kwt.detect(lines)
+#         datetime0 = date_extr.extract(lines, kwt.kwExtractor.values)
+#         if datetime0 is not None:
+#             datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
+#         else:
+#             datetime0=''
+#         total0 = total_extr.extract(lines, kwt.kwExtractor.values)
+#         rid0 = id_extr.extract(lines, kwt.kwExtractor.values)
+        
+        print(Fore.RED + str(locode0)) 
         print(Fore.RED + fn + ':') 
         k = raw_input("next")
     
