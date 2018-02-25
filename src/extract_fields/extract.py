@@ -67,15 +67,123 @@ class LocodeExtractor(object):
     def recognize(self, filepath):
         pass
         return ''
- 
-# TOTAL_KEYWORDS = "(total incl.of gst|check total|total|grand total|total ammount|total amt|amount|net|payment|amt payable|due|qualified amt|visa|master|grand)"
-TOTAL_S = "(TOTAL|Total|[aA]mount|AMOUNT|[pP]ayment|PAYMENT|[vV]isa |VISA |MASTER |[mM]aster |AMEX )"
-TOTAL_I = "(grand total|qualified amt|total amt|qualified amount|total amount)"  
-TOTAL_0 = "(Net[ :]|NET[ :]|NETS[ :]|Nets[ :]|Due[ :]|DUE[ :])"
-NOTTOTAL = "(total pts|total saving|total qty|total quantit|total item|total number|total disc|qty total|total no\.|total direct|total point)"
-TOTAL2 = "(CASH|Cash|Change Due|CHANGE DUE|[pP]ayable|PAYABLE|SUB[ -]?TOTAL|Sub[ -]?Total|SUBTTL|Sub[ -]TOTAL)"
+    
+ID_KW = r'(Receipt|RECEIPT|Rcpt|Bill|BILL|CHK|Rec No|Trans|TRANS|Order|ORDER|COUNTER|Invoice|INVOICE|Serial|Check|CHECK)'
 MONEY0 = ".*?\$[ ]?([1-9]\d{0,3}\.?\d{1,2})"
 MONEY = ".*?(\$|S\$)?[ ]*([1-9]\d{0,3}\.\d{1,2})"
+GSTMONEY = ".*?(\$|S\$)?[ ]*(1?\d\.([0-8]9|\d[1-8]|[1234678]0))"
+SVCMONEY = ".*?(\$|S\$)?[ ]*(1?\d\.\d\d)"
+ID = r'[ ]?\w*?[ :\.#]{0,4}.*?([A-Z]{0,3}[0-9]+([-/][0-9]{1,6}([-/][0-9]+[A-Z]{0,3})?)?)'
+
+def removeMatchFromLine(m, line):
+    return line[:m[0]] + line[m[0]+len(m[1]):]
+
+
+class KWExtractor(object):
+    def __init__(self):
+        self.money = RegexExtractor(MONEY, 2, 1)
+        self.money0 = RegexExtractor(MONEY0, 1, -1)
+        self.gst = RegexExtractor(GSTMONEY, 2, 1)
+        self.id = RegexExtractor(ID, 1, -1)
+        self.values = {'total':[],
+                   'subtotal':[],
+                   'cash':[],
+                   'changedue':[],
+                   'nottotal':[],
+                   'gst':[],
+                   'servicecharge':[],
+                   'receiptid':[]
+                   }
+    
+    def _process(self, linenumber, kwtype, line, nextline, recognizer):
+        pos, m = recognizer.recognize(line)
+        if pos >= 0:
+            self.values[kwtype].append((linenumber, float(m)))
+            line = removeMatchFromLine((pos,m), line)
+        elif 1.0*sum(c.isdigit() or c in ['$','.'] for c in nextline)/len(nextline) > 0.7:
+            pos, m = self.gst.recognize(nextline)  
+            if pos >= 0:
+                self.values[kwtype].append((linenumber, float(m)))
+                
+        return line, nextline
+                     
+    def extract(self, linenumber, kwtypes, line, nextline):
+        for kwtype in kwtypes:
+            if kwtype == 'gst':
+                line, nextline = self._process(linenumber, kwtype, line, nextline, self.gst)
+            if kwtype == 'servicecharge':
+                line, nextline = self._process(linenumber, kwtype, line, nextline, self.money)
+            if kwtype == 'cash':
+                line, nextline = self._process(linenumber, kwtype, line, nextline, self.money)
+            if kwtype == 'total' or kwtype == 'subtotal' or kwtype == 'changedue':
+                line, nextline = self._process(linenumber, kwtype, line, nextline, self.money)
+                line, nextline = self._process(linenumber, kwtype, line, nextline, self.money0)
+            if kwtype == 'receiptid':
+                pos, m = self.id.recognize(line)
+                if pos >= 0:
+                    self.values[kwtype].append((linenumber, m))
+        return line, nextline
+        
+                
+class KWDetector(object):
+    def __init__(self):
+        self.types = {'total':['total', 'amount', 'payment', 'visa', 'master', 'amex', 'please pay', 'qualified amt', 'qualified amount', 'net', 'nets', 'due'],
+                   'subtotal':['sub-total', 'subttl', 'payable'],
+                   'cash':['cash', 'cash payment',],
+                   'changedue':['change due'],
+                   'nottotal':['total pts', 'total savings', 'total qty', 'total quantity', 'total item', 'total number', 'total disc', 'qty total', 'total no.', 'total direct', 'total point'],
+                   'gst':['gst 7', '7 gst', 'gst', 'inclusive'],
+                   'servicecharge':['service charge', 'svr chrg', 'SVC CHG', 'SvCharge', 'Service Chg'],
+                   'receiptid':['receipt', 'rcpt', 'bill', 'chk', 'rec no.', 'trans', 'order', 'counter', 'invoice', 'serial', 'check', 'tr:']
+                   }
+        self.kwExtractor = KWExtractor()
+        self.type_list = []
+        for kwtype, kws in self.types.iteritems():
+            for kw in kws:
+                numwords = len(kw.split(' '))
+                kwlen = len(kw)
+                self.type_list.append((numwords, kwlen, self.kwToRegex(kw), kw, kwtype))
+        self.type_list.sort(reverse=True)
+                
+    def kwToRegex(self, rawkw):
+        reg = r'(^|\W)('
+        if '-' in rawkw:
+            kws = rawkw.split('-')
+            sep = '[ -]?'
+        else:
+            kws = rawkw.split(' ')
+            sep = ' '           
+        for i, kw in enumerate(kws):
+            kw.replace('.', '\\.?')
+            if i == len(kws) - 1: sep = ''
+            reg += '(' + kw.capitalize() + '|' + kw.upper() + ')' + sep
+        reg += ')($|\W)'
+        print(reg + ' ' + str(len(rawkw+2)/6))
+        return FuzzyRegexExtractor(reg, maxerr=len(rawkw+2)/6, caseSensitive=True)
+        
+    def detect(self, lines):
+        for i, oriline in enumerate(lines):
+            line = oriline
+            kwtypes = []
+            for _, _, extr, kw, kwtype in self.type_list:
+                pos, match = extr.recognize(line)
+                if pos >= 0:
+                    line = line[:pos] + line[pos + len(match):]
+                    kwtypes.append((kwtype, extr.regex))
+                    nextline = lines[i+1] if i < len(lines) - 1 else ''
+                    self.kwExtractor.extract(i, kwtype, line[pos:], nextline)
+            for kwtype, reg in kwtypes:
+                print(Fore.BLUE + '===> ' + kwtype + ' by regex ' + reg)
+    
+    
+# TOTAL_KEYWORDS = "(total incl.of gst|check total|total|grand total|total ammount|total amt|amount|net|payment|amt payable|due|qualified amt|visa|master|grand)"
+TOTAL_S = "(TOTAL|Total|[aA]mount|AMOUNT|[pP]ayment|PAYMENT|[vV]isa |VISA |MASTER |[mM]aster |AMEX |Please Pay|Qualified Amt|Qualified Amount)"
+# TOTAL_I = "(grand total|qualified amt|total amt|qualified amount|total amount)"  
+TOTAL_0 = "(Net[ :]|NET[ :]|NETS[ :]|Nets[ :]|Due[ :]|DUE[ :])"
+NOTTOTAL = "(total pts|total saving|total qty|total quantit|total item|total number|total disc|qty total|total no\.|total direct|total point)"
+TOTAL2 = "(CASH|Cash|Cash Payment|Change Due|CHANGE DUE|[pP]ayable|PAYABLE|SUB[ -]?TOTAL|Sub[ -]?Total|SUBTTL|Sub[ -]TOTAL)"
+
+
 
 month3 = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)'
 ddmmyy_slash = (r'(\s|^|\D)(([012]?\d|3[01])/([012]?\d|3[01])/(20)?1[78])', 2, ["%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y"])
@@ -247,7 +355,7 @@ if __name__ == '__main__':
                     temp += i[0]+ ' '
                 allrs[fn].append(temp)
     
-    total = DateExtractor()
+    kwt = KWType()
     currentfile = '1501685133708_76911917-c833-4319-b432-4afacef5fed6.JPG'
     for fn, lines in allrs.iteritems():
         if currentfile is not None:
@@ -255,8 +363,9 @@ if __name__ == '__main__':
                 continue
             else:
                 currentfile = None
-        
-        total.extract(lines)
+        for line in lines:
+            print(Fore.WHITE + line)
+            kwt.recognize(line)
 
         print(Fore.RED + fn + ':') 
         k = raw_input("next")
