@@ -77,22 +77,18 @@ class KWExtractor(object):
                    } 
               
     def _process(self, linenumber, kwtype, line, frompos, nextline, recognizer):
-        print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line + '", from position ' + str(frompos))
+#         print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line + '", from position ' + str(frompos))
         pos, m = recognizer.recognize(line[frompos:])
         if pos >= 0:
-            print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
+#             print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
             self.values[kwtype].append((linenumber, m))
             line = line[:frompos + pos] + ' ' + line[frompos + pos + len(m):]
         else:
             temp =  1.0*sum(c.isdigit() or c in ['$','.'] for c in nextline)
-            if len(nextline) > 2:
-                print(Fore.GREEN + 'next line val is ' + str(1.0*temp/len(nextline)))
-            else:
-                print(Fore.GREEN + 'next line val is INF.')
             if len(nextline) > 2 and 1.0*temp/len(nextline) > 0.5:
                 pos, m = recognizer.recognize(nextline)
                 if pos >= 0:
-                    print(Fore.GREEN + 'extracted-1 ' + m + ' as "' + kwtype + '"')
+#                     print(Fore.GREEN + 'extracted-1 ' + m + ' as "' + kwtype + '"')
                     self.values[kwtype].append((linenumber, m))
         return line, nextline
                      
@@ -114,10 +110,10 @@ class KWExtractor(object):
             if before == after: #not match yet
                 line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money0)
         if kwtype == 'receiptid':
-            print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line+ '"')
+#             print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line+ '"')
             pos, m = self.id.recognize(line[frompos:])
             if pos >= 0:
-                print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
+#                 print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
                 self.values[kwtype].append((linenumber, m))
                 line = line[:frompos + pos] + ' ' + line[frompos + pos + len(m):]
         return line, nextline
@@ -157,13 +153,13 @@ class KWDetector(object):
             if i == len(kws) - 1: sep = ''
             reg += '(' + kw.capitalize() + '|' + kw.upper() + ')' + sep
         reg += ')($|\W)'
-        print(reg + ' ' + str((len(rawkw)+2)/6))
+#         print(reg + ' ' + str((len(rawkw)+2)/6))
         return FuzzyRegexExtractor(reg, maxerr=(len(rawkw)+2)/6, caseSensitive=True)
         
     def detect(self, lines):
         self.kwExtractor.reset()
         for i, oriline in enumerate(lines):
-            print(Fore.WHITE + oriline)
+#             print(Fore.WHITE + oriline)
             line = oriline
             kwtypes = []
             nextline = lines[i+1] if i < len(lines) - 1 else ''
@@ -171,7 +167,7 @@ class KWDetector(object):
                 pos, match = extr.recognize(line)
                 if pos >= 0:
                     line = removeMatchFromLine((pos, match), line)
-                    print(Fore.BLUE + 'match ' + match +' as "' + kwtype + '", remaining "' + line+'"')
+#                     print(Fore.BLUE + 'match ' + match +' as "' + kwtype + '", remaining "' + line+'"')
                     kwtypes.append(kwtype)
                     line, nextline = self.kwExtractor.extract(i, kwtype, line, pos , nextline)
 

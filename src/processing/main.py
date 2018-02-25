@@ -5,6 +5,7 @@ from time import sleep
 from multiprocessing import Process, Manager, Pool
 from pagepredictor import PagePredictor
 from server import LocalServer
+from extract_fields.extract import CLExtractor
 
 from common import args
    
@@ -13,11 +14,23 @@ def runserver(server, states):
 
 def readReceipt((reader, num)):
     print('start pushing image ' + str(num))
-    for filename in os.listdir(args.imgsdir):
-        if filename[-3:].upper() == 'JPG' and hash(filename) % args.numprocess == num:
-            ret = reader.ocrImage(args.imgsdir + filename)
-            print filename + '-------------------------------'
-            print ret
+    extractor = CLExtractor()
+    with open(args.javapath + str(num) + '.txt','a') as of:
+        i = 0
+        for filename in os.listdir(args.imgsdir):
+            if filename[-3:].upper() == 'JPG' and hash(filename) % args.numprocess == num:
+                ret = reader.ocrImage(args.imgsdir + filename)
+                print filename + '-------------------------------'
+                lines = []
+                for line in ret.split('\n'):
+                    lines.append(line.rstrip())
+                    print lines[-1]
+                rid, locode, total, dt = extractor.extract(lines)
+                print str(i) + ',' + filename + ',' + rid + ',' + locode + ',' + '{:05.2f}'.format(total) + ',' + dt
+                i += 1
+                of.write(str(i) + ',' + filename + ',' + rid + ',' + locode + ',' + '{:05.2f}'.format(total) + ',' + dt + '\n')
+                of.flush()
+                
     return None
 
 if __name__ == "__main__":

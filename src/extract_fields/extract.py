@@ -4,7 +4,7 @@ Created on Feb 12, 2018
 @author: loitg
 '''
 from __future__ import print_function
-import re
+import re, os
 import colorama
 from colorama import Fore
 # from fuzzywuzzy import fuzz
@@ -12,6 +12,8 @@ from datetime import datetime, date, time
 from extractor import RegexExtractor, FuzzyRegexExtractor, KWDetector, ALLMONEY
 from common import args
 from subprocess import *
+import random
+from common import args
 
 class LocodeExtractor(object):
     def __init__(self, csvdb, jarfile):
@@ -35,11 +37,15 @@ class LocodeExtractor(object):
         return ret
 
     def extract(self, lines, kwvalues=None):
-        with open(args.javapath + 'tempfile.txt', 'w') as tempfile:
+        tempfilename = str(random.randint(1,9999999)) + '.txt'
+        with open(args.javapath + tempfilename, 'w') as tempfile:
             for line in lines:
                 tempfile.write(line)
         
-        return self.jarWrapper(args.javapath + 'tempfile.txt')
+        rs = self.jarWrapper(args.javapath + tempfilename)
+        #delete
+        os.remove(args.javapath + tempfilename)
+        return rs
 
 
 month3 = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)'
@@ -139,14 +145,14 @@ class TotalExtractor(object):
         self.nonemptylineid = []
         self.valuelist = []
         for i, line in enumerate(lines):
-            print()
-            print(str(i) + ': ', end = '')
+#             print()
+#             print(str(i) + ': ', end = '')
             moneys_in_line = re.finditer(ALLMONEY, line)
             self.line_money.append([])
             for m in moneys_in_line:
                 m = m.group(2)
                 if len(m) > 1:
-                    print(m + ', ', end='')
+#                     print(m + ', ', end='')
                     self.line_money[i].append(m)
                     if i not in self.nonemptylineid: self.nonemptylineid.append(i)
                     self.valuelist.append(m)
@@ -344,6 +350,26 @@ class DateExtractor(object):
         sorted_time_cands.sort(reverse=True)
         return datetime.combine(choosen_date, sorted_time_cands[0][1])
 
+class CLExtractor(object):
+    def __init__(self):
+        self.kwt = KWDetector()
+        self.date_extr = DateExtractor()
+        self.total_extr = TotalExtractor()
+        self.id_extr = ReceiptIdExtractor()
+        self.locode_extr = LocodeExtractor(args.dbfile, args.locationnjar)
+    
+    def extract(self, lines, kwvalues=None):
+        locode0 = self.locode_extr.extract(lines) 
+        self.kwt.detect(lines)
+        datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
+        if datetime0 is not None:
+            datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
+        else:
+            datetime0=''
+        total0 = self.total_extr.extract(lines, self.kwt.kwExtractor.values)
+        rid0 = self.id_extr.extract(lines, self.kwt.kwExtractor.values)
+        return (rid0, locode0, total0, datetime0)
+            
 if __name__ == '__main__':
     allrs = {}
     with open('/tmp/temp/rs.txt','r') as f:
@@ -375,14 +401,14 @@ if __name__ == '__main__':
                 
         locode0 = locode_extr.extract(lines)
         
-#         kwt.detect(lines)
-#         datetime0 = date_extr.extract(lines, kwt.kwExtractor.values)
-#         if datetime0 is not None:
-#             datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
-#         else:
-#             datetime0=''
-#         total0 = total_extr.extract(lines, kwt.kwExtractor.values)
-#         rid0 = id_extr.extract(lines, kwt.kwExtractor.values)
+        kwt.detect(lines)
+        datetime0 = date_extr.extract(lines, kwt.kwExtractor.values)
+        if datetime0 is not None:
+            datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
+        else:
+            datetime0=''
+        total0 = total_extr.extract(lines, kwt.kwExtractor.values)
+        rid0 = id_extr.extract(lines, kwt.kwExtractor.values)
         
         print(Fore.RED + str(locode0)) 
         print(Fore.RED + fn + ':') 
