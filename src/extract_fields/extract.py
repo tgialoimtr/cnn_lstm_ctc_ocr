@@ -4,60 +4,13 @@ Created on Feb 12, 2018
 @author: loitg
 '''
 from __future__ import print_function
-from ctypes import cdll
-lib1 = cdll.LoadLibrary('/usr/local/lib/libtre.so.5')
-import tre
 import re
 import colorama
 from colorama import Fore
 # from fuzzywuzzy import fuzz
 from datetime import datetime, date, time
+from extractor import RegexExtractor, FuzzyRegexExtractor, KWDetector, ALLMONEY
 
-    
-class RegexExtractor(object):
-    def __init__(self, regex, target_group=0, extra_group=-1):
-        self.regex = regex
-        self.target_group = target_group
-        self.extra_group = extra_group
-        
-    def recognize(self, line):
-        m = re.search(self.regex, line, re.I)
-        if m:
-            if self.extra_group >= 0:
-                self.extra = m.start(self.extra_group), m.group(self.extra_group)
-            return m.start(self.target_group), m.group(self.target_group)
-        else:
-            return -1, ''
-
-class FuzzyRegexExtractor(object):
-    def __init__(self, regex, target_group=0, maxerr=1, caseSensitive=True):
-        self.regex = regex
-        self.target_group = target_group
-        self.fuzzyness = tre.Fuzzyness(maxerr = maxerr)
-        if not caseSensitive:
-            self.r = tre.compile(regex, tre.ICASE | tre.EXTENDED)
-        else:
-            self.r = tre.compile(regex, tre.EXTENDED)
-        
-    def recognize(self, line):
-        m = self.r.search(line, self.fuzzyness)
-        if m:
-            return m.groups()[self.target_group][0], m[self.target_group]
-        else:
-            return -1, ''
-
-class FuzzyThenExactExtractor(object):
-    def __init__(self, fuzzyregex, exactregex):
-        self.fuzzyregex = fuzzyregex
-        self.exactregex = exactregex
-        
-    def recognize(self, line):    
-        m = self.fuzzyregex.recognize(line)
-        if m[0] >= 0:
-            n = self.exactregex.recognize(line[m[0]+len(m[1]):])
-            return n
-        else:
-            return m
 
 class LocodeExtractor(object):
     def __init__(self, csvdb, jarfile):
@@ -67,147 +20,6 @@ class LocodeExtractor(object):
     def recognize(self, filepath):
         pass
         return ''
-    
-ID_KW = r'(Receipt|RECEIPT|Rcpt|Bill|BILL|CHK|Rec No|Trans|TRANS|Order|ORDER|COUNTER|Invoice|INVOICE|Serial|Check|CHECK)'
-MONEY0 = ".*?\$[ ]?([1-9]\d{0,3}\.?\d{1,2})"
-MONEY = ".*?(\$|S\$)?[ ]*([1-9]\d{0,3}\.\d{1,2})"
-ALLMONEY = "(^|\D)(([1-9]\d*|0)\.\d\d)"
-GSTMONEY = "(^|\D)(\d\.([0-8]9|\d[1-8]|[1234678]0))"
-GSTMONEY0 = "(^|\D)(1\d\.([0-8]9|\d[1-8]|[1234678]0))"
-SVCMONEY = "(^|\D)(1?\d\.\d\d)"
-ID = r'[ ]?\w*?[ :\.#]{0,4}.*?([A-Z]{0,3}[0-9]+([-/][0-9]{1,6}([-/][0-9]+[A-Z]{0,3})?)?)'
-
-def removeMatchFromLine(m, line):
-    return line[:m[0]] + ' ' + line[m[0]+len(m[1]):]
-
-
-class KWExtractor(object):
-    def __init__(self):
-        self.money = RegexExtractor(MONEY, 2, 1)
-        self.money0 = RegexExtractor(MONEY0, 1, -1)
-        self.gst = RegexExtractor(GSTMONEY, 2, 1)
-        self.gst0 = RegexExtractor(GSTMONEY0, 2, 1)
-        self.id = RegexExtractor(ID, 1, -1)
-        self.reset()
-        
-    def reset(self):
-        self.values = {'total':[],
-                   'subtotal':[],
-                   'cash':[],
-                   'changedue':[],
-                   'nottotal':[],
-                   'gst':[],
-                   'servicecharge':[],
-                   'receiptid':[]
-                   } 
-              
-    def _process(self, linenumber, kwtype, line, frompos, nextline, recognizer):
-        print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line + '", from position ' + str(frompos))
-        pos, m = recognizer.recognize(line[frompos:])
-        if pos >= 0:
-            print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
-            self.values[kwtype].append((linenumber, float(m)))
-            line = line[:frompos + pos] + ' ' + line[frompos + pos + len(m):]
-        else:
-            temp =  1.0*sum(c.isdigit() or c in ['$','.'] for c in nextline)
-            if len(nextline) > 2:
-                print(Fore.GREEN + 'next line val is ' + str(1.0*temp/len(nextline)))
-            else:
-                print(Fore.GREEN + 'next line val is INF.')
-            if len(nextline) > 2 and 1.0*temp/len(nextline) > 0.5:
-                pos, m = recognizer.recognize(nextline)
-                if pos >= 0:
-                    print(Fore.GREEN + 'extracted-1 ' + m + ' as "' + kwtype + '"')
-                    self.values[kwtype].append((linenumber, float(m)))
-        return line, nextline
-                     
-    def extract(self, linenumber, kwtype, line, frompos, nextline):
-        if kwtype == 'gst':
-            before = len(self.values[kwtype])
-            line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.gst)
-            after = len(self.values[kwtype])
-            if before == after: #not match yet
-                line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.gst0)
-        if kwtype == 'servicecharge':
-            line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money)
-        if kwtype == 'cash':
-            line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money)
-        if kwtype == 'total' or kwtype == 'subtotal' or kwtype == 'changedue':
-            before = len(self.values[kwtype])
-            line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money)
-            after = len(self.values[kwtype])
-            if before == after: #not match yet
-                line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money0)
-        if kwtype == 'receiptid':
-            print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line+ '"')
-            pos, m = self.id.recognize(line[frompos:])
-            if pos >= 0:
-                print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
-                self.values[kwtype].append((linenumber, m))
-                line = line[:frompos + pos] + ' ' + line[frompos + pos + len(m):]
-        return line, nextline
-        
-                
-class KWDetector(object):
-    def __init__(self):
-        self.types = {'total':['total', 'amount', 'payment', 'visa', 'master', 'amex', 'please pay', 'qualified amt', 'qualified amount', 'net', 'nets', 'due'],
-                   'subtotal':['sub-total', 'subttl', 'payable'],
-                   'cash':['cash', 'cash payment'],
-                   'changedue':['change due', 'change', 'total change'],
-                   'nottotal':['total pts', 'total savings', 'total qty', 'total quantity', 'total item', 'total number', 'total disc', 'qty total', 'total no.', 'total direct', 'total point'],
-                   'gst':['gst 7', '7 gst', 'gst', 'inclusive', 'G.S.T.', 'includes'],
-                   'servicecharge':['service charge', 'svr chrg', 'SVC CHG', 'SvCharge', 'Service Chg', 'service tax'],
-                   'receiptid':['receipt', 'rcpt', 'bill', 'chk', 'trans', 'order', 'counter', 'invoice', 'serial', 'check', 'tr:']
-                   }
-        self.kwExtractor = KWExtractor()
-        self.type_list = []
-        for kwtype, kws in self.types.iteritems():
-            for kw in kws:
-                numwords = len(kw.split(' '))
-                if kwtype == 'gst' or kwtype == 'servicecharge': numwords += 5
-                kwlen = len(kw)
-                self.type_list.append((numwords, kwlen, self.kwToRegex(kw), kw, kwtype))
-        self.type_list.sort(reverse=True)
-                
-    def kwToRegex(self, rawkw):
-        reg = r'(^|\W)('
-        if '-' in rawkw:
-            kws = rawkw.split('-')
-            sep = '[ -]?'
-        else:
-            kws = rawkw.split(' ')
-            sep = ' '           
-        for i, kw in enumerate(kws):
-            kw.replace('.', '\\.?')
-            if i == len(kws) - 1: sep = ''
-            reg += '(' + kw.capitalize() + '|' + kw.upper() + ')' + sep
-        reg += ')($|\W)'
-        print(reg + ' ' + str((len(rawkw)+2)/6))
-        return FuzzyRegexExtractor(reg, maxerr=(len(rawkw)+2)/6, caseSensitive=True)
-        
-    def detect(self, lines):
-        self.kwExtractor.reset()
-        for i, oriline in enumerate(lines):
-            print(Fore.WHITE + oriline)
-            line = oriline
-            kwtypes = []
-            nextline = lines[i+1] if i < len(lines) - 1 else ''
-            for _, _, extr, kw, kwtype in self.type_list:
-                pos, match = extr.recognize(line)
-                if pos >= 0:
-                    line = removeMatchFromLine((pos, match), line)
-                    print(Fore.BLUE + 'match ' + match +' as "' + kwtype + '", remaining "' + line+'"')
-                    kwtypes.append(kwtype)
-                    line, nextline = self.kwExtractor.extract(i, kwtype, line, pos , nextline)
-    
-    
-# TOTAL_KEYWORDS = "(total incl.of gst|check total|total|grand total|total ammount|total amt|amount|net|payment|amt payable|due|qualified amt|visa|master|grand)"
-TOTAL_S = "(TOTAL|Total|[aA]mount|AMOUNT|[pP]ayment|PAYMENT|[vV]isa |VISA |MASTER |[mM]aster |AMEX |Please Pay|Qualified Amt|Qualified Amount)"
-# TOTAL_I = "(grand total|qualified amt|total amt|qualified amount|total amount)"  
-TOTAL_0 = "(Net[ :]|NET[ :]|NETS[ :]|Nets[ :]|Due[ :]|DUE[ :])"
-NOTTOTAL = "(total pts|total saving|total qty|total quantit|total item|total number|total disc|qty total|total no\.|total direct|total point)"
-TOTAL2 = "(CASH|Cash|Cash Payment|Change Due|CHANGE DUE|[pP]ayable|PAYABLE|SUB[ -]?TOTAL|Sub[ -]?Total|SUBTTL|Sub[ -]TOTAL)"
-
 
 
 month3 = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)'
@@ -276,9 +88,117 @@ def show(imgpath):
         os.system('xdg-open ' + imgpath)
           
 class TotalExtractor(object):
+    '''
+    in total: intotal #
+    validated by gst or svc: valgstsvc
+    validated by random (in line range): valrand #
+    in subtotal or cash: insubtotal #
+    in value range (>9 and < 200): inrange
+    counts > 2 (in line range): multiple #
+    '''
     def __init__(self):
         self.money = RegexExtractor(ALLMONEY, 2, -1)
+    
+    def findMatchedRatio(self, small, big, ratio):
+        matched_str = []
+        for s_str in small:
+            s = float(s_str)
+            bounds = ((s-0.006)*ratio, (s+0.006)*ratio)
+            for d_str in big:
+                d = float(d_str)
+                if d > 1.0 and d > bounds[0] and d < bounds[1] and (d_str not in matched_str): 
+                    matched_str.append(d_str)
+        return matched_str
+   
+    def preprocessLines(self, lines):
+        self.line_money = []
+        self.nonemptylineid = []
+        self.valuelist = []
+        for i, line in enumerate(lines):
+            print()
+            print(str(i) + ': ', end = '')
+            moneys_in_line = re.finditer(ALLMONEY, line)
+            self.line_money.append([])
+            for m in moneys_in_line:
+                m = m.group(2)
+                if len(m) > 1:
+                    print(m + ', ', end='')
+                    self.line_money[i].append(m)
+                    if i not in self.nonemptylineid: self.nonemptylineid.append(i)
+                    self.valuelist.append(m)
+        self.valuelist = [float(x) for x in self.valuelist]
+        self.valuelist = [x for x in self.valuelist if x < 300]
+        self.meanvalue = sum(self.valuelist)/len(self.valuelist) if len(self.valuelist) > 0 else 0
         
+                    
+    def similar(self, floatstr1, floatstr2):
+        return abs(float(floatstr1) - float(floatstr2)) < 0.05
+    
+    def buildFeatures(self, kwvalues):
+        linerange_multiple = +3#-3
+        linerange_gstvalidate = +8#-8
+        assertkwvalues = {}
+        assertkwvalues['total'] = 0
+        assertkwvalues['subtotal'] = 0
+        assertkwvalues['cash'] = 0
+        fromgst = [x[1] for x in kwvalues['gst']]
+        fromsvc = [x[1] for x in kwvalues['servicecharge']]
+        self.features = []
+        for i, moneylist in enumerate(self.line_money):
+            flatten = []
+            vals = set()
+            for j in range(max(0, i-linerange_multiple), min(len(self.line_money), i+linerange_multiple+1)):
+                flatten += [(j, m) for m in self.line_money[j]]
+            for j in range(max(0, i-linerange_gstvalidate), min(len(self.line_money), i+linerange_gstvalidate+1)):
+                vals |= set(self.line_money[j])
+            for current in moneylist:
+                count = sum([(otherm==current) for _, otherm in flatten]) - 1
+                valrand = len(self.findMatchedRatio(vals, [current], 1.0/0.06542)) > 0
+                intotal = False
+                for j,m in kwvalues['total']:
+                    if j==i and m==current:
+                        assertkwvalues['total'] += 1
+                        intotal = True
+                insubtotal = False
+                for j,m in kwvalues['subtotal']:
+                    if j==i and m==current:
+                        assertkwvalues['subtotal'] += 1
+                        insubtotal = True            
+                for j,m in kwvalues['cash']:
+                    if j==i and m==current:
+                        assertkwvalues['cash'] += 1
+                        insubtotal = True                 
+                a = len(self.findMatchedRatio(fromgst, [current], 1.0/0.06542)) > 0
+                b = len(self.findMatchedRatio(fromsvc, [current], 1.0/0.08500)) > 0
+                valgstsvc = a or b
+                current_val = float(current)
+                self.features.append(( 1 if valgstsvc else 0,
+                                    1 if intotal else 0,
+                                    1 if valrand else 0,
+                                    1 if (count > 0 and current_val > self.meanvalue) else 0,
+                                    1 if current_val > 5 and current_val < 150 else 0,
+                                    1 if insubtotal else 0,
+                                    i,
+                                    current))
+        print(str(assertkwvalues['total']) + '===' + str(len(kwvalues['total'])))
+        print(str(assertkwvalues['subtotal']) + '===' + str(len(kwvalues['subtotal'])))
+        print(str(assertkwvalues['cash']) + '===' + str(len(kwvalues['cash'])))
+        self.features.sort(reverse=True)
+    
+    def printTopFeatures(self):
+        temp = self.features[:10]
+        for val1, intotal, valrand, multiple, inrange, insubtotal, i, m in temp:
+            print(Fore.GREEN + 'val:' + str(val1) + 
+                  ' ,intotal:' + str(intotal) + 
+                  ' ,valrand:' + str(valrand) + 
+                  ' ,multi:' + str(multiple) +
+                  ' ,inrange:' + str(inrange) + 
+                  ' ,insub:' + str(insubtotal) + 
+                  ' ,val:' + str(i) + '_' + m
+                  )
+        
+    
+    
     def extract(self, lines, kwvalues):
         def printList(name, l, col):
             print(col + name + ': ', end='')
@@ -288,41 +208,31 @@ class TotalExtractor(object):
                 else:
                     print(val, end=',')
             print('\n', end='')
-        for line in lines:
-            it = re.finditer(ALLMONEY, line)
-            ps = []
-            for m in it:
-                m = m.group(2)
-                if len(m) > 1:
-                    ps.append(m)
-            printList('', ps, Fore.WHITE)
+        
+        self.preprocessLines(lines)
+        self.buildFeatures(kwvalues)
+        self.printTopFeatures()
+
         totals = kwvalues['total']
         gsts = kwvalues['gst']
         svcs = kwvalues['servicecharge']
         subtotals = kwvalues['subtotal']
         cashes = kwvalues['cash']
-        changedue = kwvalues['changedue']
-
+#         changedue = kwvalues['changedue']
+             
         totals = [x[1] for x in totals]
         printList('TOTAL', totals, Fore.RED)
-        totalfromgst = [x[1]/0.06542 for x in gsts]
+        totalfromgst = [float(x[1])/0.06542 for x in gsts]
         printList('GST', totalfromgst, Fore.GREEN)
-        totalfromsvc = [x[1]/0.08500 for x in svcs]
+        totalfromsvc = [float(x[1])/0.08500 for x in svcs]
         printList('SVC', totalfromsvc, Fore.BLUE)
-        
+         
         cashes.sort()
         fromcash = [x[1] for x in cashes]
         printList('Cashes', fromcash, Fore.MAGENTA)
         subtotals.sort()
         subtotals = [x[1] for x in subtotals]
         printList('Subtotal', subtotals, Fore.YELLOW)
-        fromcd = [x[1] for x in changedue]
-        cand = []
-        if len(changedue) > 0 and len(fromcash) > 0:
-            for i in fromcash:
-                for j in fromcd:
-                    cand.append(i-j)
-        printList('Minus', cand, Fore.CYAN)
         show('/home/loitg/Downloads/part1/' + fn)
 
                     
@@ -397,13 +307,6 @@ class DateExtractor(object):
 #         sorted_time_cands.sort(reversed=True)
 #         return datetime.combine(choosen_date, sorted_time_cands[0][1])
         return None
-                
-
-
-# ID_KW = r'(Receipt|RECEIPT|Rcpt|Bill|BILL|CHK|Rec No|Trans|TRANS|Order|ORDER|COUNTER|Invoice|INVOICE|Serial|Check|CHECK)'
-# ID_VAL = r'[A-Z]{0,3}[0-9]+([-/][0-9]{1,6}([-/][0-9]+[A-Z]{0,3})?)?'
-# id = ID_KW + r'[ ]?\w*?[ :\.#]{0,4}.*?' + ID_VAL
-# id = RegexExtractor([id])
 
 if __name__ == '__main__':
     allrs = {}
@@ -423,7 +326,7 @@ if __name__ == '__main__':
     
     kwt = KWDetector()
     total = TotalExtractor()
-    currentfile = '1501682933764_d9514ab7-411f-4073-b461-c217333269a8.JPG'
+    currentfile = '1501686048201_bf50f277-d262-4dd5-aea1-3777c7e86e22.JPG'
     for fn, lines in allrs.iteritems():
         if currentfile is not None:
             if fn != currentfile:
