@@ -71,6 +71,7 @@ class LocodeExtractor(object):
 ID_KW = r'(Receipt|RECEIPT|Rcpt|Bill|BILL|CHK|Rec No|Trans|TRANS|Order|ORDER|COUNTER|Invoice|INVOICE|Serial|Check|CHECK)'
 MONEY0 = ".*?\$[ ]?([1-9]\d{0,3}\.?\d{1,2})"
 MONEY = ".*?(\$|S\$)?[ ]*([1-9]\d{0,3}\.\d{1,2})"
+ALLMONEY = "(^|\D)(([1-9]\d*|0)\.\d\d)"
 GSTMONEY = "(^|\D)(\d\.([0-8]9|\d[1-8]|[1234678]0))"
 GSTMONEY0 = "(^|\D)(1\d\.([0-8]9|\d[1-8]|[1234678]0))"
 SVCMONEY = "(^|\D)(1?\d\.\d\d)"
@@ -87,6 +88,9 @@ class KWExtractor(object):
         self.gst = RegexExtractor(GSTMONEY, 2, 1)
         self.gst0 = RegexExtractor(GSTMONEY0, 2, 1)
         self.id = RegexExtractor(ID, 1, -1)
+        self.reset()
+        
+    def reset(self):
         self.values = {'total':[],
                    'subtotal':[],
                    'cash':[],
@@ -95,8 +99,8 @@ class KWExtractor(object):
                    'gst':[],
                    'servicecharge':[],
                    'receiptid':[]
-                   }
-    
+                   } 
+              
     def _process(self, linenumber, kwtype, line, frompos, nextline, recognizer):
         print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line + '", from position ' + str(frompos))
         pos, m = recognizer.recognize(line[frompos:])
@@ -110,7 +114,7 @@ class KWExtractor(object):
                 print(Fore.GREEN + 'next line val is ' + str(1.0*temp/len(nextline)))
             else:
                 print(Fore.GREEN + 'next line val is INF.')
-            if len(nextline) > 2 and 1.0*temp/len(nextline) > 0.7:
+            if len(nextline) > 2 and 1.0*temp/len(nextline) > 0.5:
                 pos, m = recognizer.recognize(nextline)
                 if pos >= 0:
                     print(Fore.GREEN + 'extracted-1 ' + m + ' as "' + kwtype + '"')
@@ -148,11 +152,11 @@ class KWDetector(object):
     def __init__(self):
         self.types = {'total':['total', 'amount', 'payment', 'visa', 'master', 'amex', 'please pay', 'qualified amt', 'qualified amount', 'net', 'nets', 'due'],
                    'subtotal':['sub-total', 'subttl', 'payable'],
-                   'cash':['cash', 'cash payment',],
-                   'changedue':['change due'],
+                   'cash':['cash', 'cash payment'],
+                   'changedue':['change due', 'change', 'total change'],
                    'nottotal':['total pts', 'total savings', 'total qty', 'total quantity', 'total item', 'total number', 'total disc', 'qty total', 'total no.', 'total direct', 'total point'],
-                   'gst':['gst 7', '7 gst', 'gst', 'inclusive', 'G.S.T.'],
-                   'servicecharge':['service charge', 'svr chrg', 'SVC CHG', 'SvCharge', 'Service Chg'],
+                   'gst':['gst 7', '7 gst', 'gst', 'inclusive', 'G.S.T.', 'includes'],
+                   'servicecharge':['service charge', 'svr chrg', 'SVC CHG', 'SvCharge', 'Service Chg', 'service tax'],
                    'receiptid':['receipt', 'rcpt', 'bill', 'chk', 'trans', 'order', 'counter', 'invoice', 'serial', 'check', 'tr:']
                    }
         self.kwExtractor = KWExtractor()
@@ -160,6 +164,7 @@ class KWDetector(object):
         for kwtype, kws in self.types.iteritems():
             for kw in kws:
                 numwords = len(kw.split(' '))
+                if kwtype == 'gst' or kwtype == 'servicecharge': numwords += 5
                 kwlen = len(kw)
                 self.type_list.append((numwords, kwlen, self.kwToRegex(kw), kw, kwtype))
         self.type_list.sort(reverse=True)
@@ -181,6 +186,7 @@ class KWDetector(object):
         return FuzzyRegexExtractor(reg, maxerr=(len(rawkw)+2)/6, caseSensitive=True)
         
     def detect(self, lines):
+        self.kwExtractor.reset()
         for i, oriline in enumerate(lines):
             print(Fore.WHITE + oriline)
             line = oriline
@@ -219,24 +225,109 @@ IIMMSS = (r'(\s|^|\D)([01]?\d:[0-5]?\d(:[0-5]\d)?[ ]?([AP]m|[AP]M|[ap]m))', 2, [
 HHMMSS = (r'(\s|^|\D)([012]?\d:[0-5]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M:%S"])
 HHMM = (r'(\s|^|\D)([012]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M"])
 
+SPECIALID1 = r'(\s|^|\D)(\d{6} \d{5} \d{4}) \d{2}:\d{2}'
+SPECIALID2 = r'(\s|^|\D)([012]?\d|3[01])/([012]?\d|3[01])/201[78][ ]*[012]\d:[0-5]\d[ ]*([A-Z]{0,3}[0-9]+)'
+
 class ReceiptIdExtractor(object):
     def __init__(self):
-        pass
+        self.s1 = FuzzyRegexExtractor(SPECIALID1, 2, maxerr=2, caseSensitive=False)
+        self.s2 = FuzzyRegexExtractor(SPECIALID2, 4, maxerr=2, caseSensitive=False)
     
-    def mostPotential(self, idlist):  
+    def mostPotential(self, idlist):
+        if len(idlist) > 1:
+            sortedlist = [] 
+            for receiptid in idlist:
+                if len(receiptid) > 2:
+                    numdigit = sum([c.isdigit() for c in receiptid])
+                    sortedlist.append((1.0*numdigit/len(receiptid), receiptid))
+            sortedlist.sort(reverse=True)
+            if len(sortedlist) > 0:
+                return sortedlist[0]
+            else:
+                return idlist[0]
+        elif len(idlist) ==1:
+            return idlist[0]
+        else:
+            return ''
+        
     def extract(self, lines, kwvalues):
+        for line in lines:
+            pos, m = self.s1.recognize(line)
+            if pos >= 0:
+                return m
+        for line in lines:
+            pos, m = self.s2.recognize(line)
+            if pos >= 0:
+                return m
         ids0 = kwvalues['receiptid']
         if len(ids0) > 0:
             return self.mostPotential(ids0)
-        
+import os, cv2        
+def show(imgpath):
+    print('showing' + imgpath)
+    img = cv2.imread(imgpath)
+    h, w = img.shape[:2]
+    newwidth = int(950.0 * w / h)
+    if newwidth > 300:
+        img = cv2.resize(img, (newwidth, 900))
+        cv2.imshow('kk', img)
+        cv2.waitKey(500)
+    else:
+        os.system('xdg-open ' + imgpath)
+          
 class TotalExtractor(object):
     def __init__(self):
-        pass
+        self.money = RegexExtractor(ALLMONEY, 2, -1)
         
     def extract(self, lines, kwvalues):
-        pass
-                
+        def printList(name, l, col):
+            print(col + name + ': ', end='')
+            for val in l:
+                if type(val) == float:
+                    print('{:05.2f}'.format(val), end=',')
+                else:
+                    print(val, end=',')
+            print('\n', end='')
+        for line in lines:
+            it = re.finditer(ALLMONEY, line)
+            ps = []
+            for m in it:
+                m = m.group(2)
+                if len(m) > 1:
+                    ps.append(m)
+            printList('', ps, Fore.WHITE)
+        totals = kwvalues['total']
+        gsts = kwvalues['gst']
+        svcs = kwvalues['servicecharge']
+        subtotals = kwvalues['subtotal']
+        cashes = kwvalues['cash']
+        changedue = kwvalues['changedue']
 
+        totals = [x[1] for x in totals]
+        printList('TOTAL', totals, Fore.RED)
+        totalfromgst = [x[1]/0.06542 for x in gsts]
+        printList('GST', totalfromgst, Fore.GREEN)
+        totalfromsvc = [x[1]/0.08500 for x in svcs]
+        printList('SVC', totalfromsvc, Fore.BLUE)
+        
+        cashes.sort()
+        fromcash = [x[1] for x in cashes]
+        printList('Cashes', fromcash, Fore.MAGENTA)
+        subtotals.sort()
+        subtotals = [x[1] for x in subtotals]
+        printList('Subtotal', subtotals, Fore.YELLOW)
+        fromcd = [x[1] for x in changedue]
+        cand = []
+        if len(changedue) > 0 and len(fromcash) > 0:
+            for i in fromcash:
+                for j in fromcd:
+                    cand.append(i-j)
+        printList('Minus', cand, Fore.CYAN)
+        show('/home/loitg/Downloads/part1/' + fn)
+
+                    
+                    
+                    
 class DateExtractor(object):
     def __init__(self):
         self.rawdatelist = [ddmmyy_slash, yyddmm_slash, ddmmyy_minus, yyddmm_minus, ddmmyy_dot, yyddmm_dot, yyddmm_none, ddmmyy_none, ddbbyy, bbddyy]
@@ -251,7 +342,7 @@ class DateExtractor(object):
     def cleanTimeString(self, oristr):
         return oristr.replace('\'','').replace(',','').replace(' ','')
     
-    def extract(self, lines):
+    def extract(self, lines, kwvalues=None):
         date_cands = []
         for i, line in enumerate(lines):
             print(Fore.WHITE + line)
@@ -331,7 +422,8 @@ if __name__ == '__main__':
                 allrs[fn].append(temp)
     
     kwt = KWDetector()
-    currentfile = '1501684279753_59ed9d0b-61c4-4241-9103-6f4ab2fe0684.JPG'
+    total = TotalExtractor()
+    currentfile = '1501682933764_d9514ab7-411f-4073-b461-c217333269a8.JPG'
     for fn, lines in allrs.iteritems():
         if currentfile is not None:
             if fn != currentfile:
@@ -339,7 +431,7 @@ if __name__ == '__main__':
             else:
                 currentfile = None
         kwt.detect(lines)
-
+        total.extract(lines, kwt.kwExtractor.values)
         print(Fore.RED + fn + ':') 
         k = raw_input("next")
     
