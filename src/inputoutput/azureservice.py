@@ -9,6 +9,8 @@ from azure.storage.queue import QueueService
 from common import args
 from receipt import ExtractedData, ReceiptSerialize
 import logging
+from azure.common import AzureException, AzureMissingResourceHttpError
+from time import sleep
 
 # DefaultEndpointsProtocol=https;
 # AccountName=capitastarstorageacctest;AccountKey=A51dFg8jfMWTsjRSvT40GwaHxcNnUGz1bRiu6JZAuvnLBthzh+iITi6507REwLYo23ZZeCPVWY1i8zLRTxAvnQ==;
@@ -21,7 +23,7 @@ import logging
 logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
 rootLogger = logging.getLogger()
 
-fileHandler = logging.FileHandler(os.path.join(args.download_dir, 'log.txt'))
+fileHandler = logging.FileHandler(os.path.join(args.javapath, 'log.txt'))
 fileHandler.setFormatter(logFormatter)
 rootLogger.addHandler(fileHandler)
 
@@ -38,32 +40,41 @@ class AzureService(object):
         self.pushname = queue_push
         
         self.qs = QueueService(account_name=account_name, 
-                               account_key=account_key+'l',
+                               account_key=account_key,
                                protocol='https',
 #                                endpoint_suffix='core.windows.net'
                                 )
         self.bs = BlockBlobService(account_name=account_name, 
                          account_key=account_key)
-        
-        self.qs.create_queue(self.getname)
-        self.qs.create_queue(self.pushname)
-        self.bs.create_container(self.ctnname)
+        self.qs.create_queue(self.getname, timeout=1)
+        self.qs.create_queue(self.pushname, timeout=1)
+        self.bs.create_container(self.ctnname, timeout=1)
+        print 'Init Azure success'
     
     def pushMessage(self, message, qname=None):
         if qname is None:
             qname = self.pushname
-        self.qs.put_message(self.pushname, message) 
+        try:
+            self.qs.put_message(self.pushname, message) 
+        except Exception as e:
+            print 'ERROR PUSH MESSAGE '
+            print e
         
     def getMessage(self, qname=None, num=1):
         if qname is None:
             qname = self.getname
-        message = self.qs.get_messages(qname, num, visibility_timeout=self.VISIBILITY_TIMEOUT)
+        try:
+            message = self.qs.get_messages(qname, num, visibility_timeout=self.VISIBILITY_TIMEOUT)
+        except Exception as e:
+            print 'ERROR GET MESSAGE '
+            print e
+            return []
         return message
     
     def getReceiptInfo(self):
         message = self.getMessage()
         if len(message) > 0:
-            rinfo = ReceiptSerialize.fromjson(message[0].content)
+            rinfo = ReceiptSerialize.fromjson(message[0].content)   
             return message[0], rinfo
         else:
             return None, None
@@ -94,7 +105,16 @@ class AzureService(object):
     
     def getImage(self, imgname):
         localpath= os.path.join(args.download_dir, imgname)
-        self.bs.get_blob_to_path(self.ctnname, imgname, localpath)
+        try:
+            self.bs.get_blob_to_path(self.ctnname, imgname, localpath)
+        except AzureMissingResourceHttpError as e:
+            print 'Blob named ' + imgname + ' doesnot exist.' 
+            print e            
+            return ''
+        except Exception as e:
+            print 'Exception while getting blob.' 
+            print e            
+            return None
         return localpath
     
     def deleteMessage(self, message, qname=None): 
@@ -135,6 +155,7 @@ if __name__ == '__main__':
     rootLogger.info('So should this')
     rootLogger.warning('And this, too')
     rootLogger.info('Started')
+    print('started')
     try:
         service = AzureService(account_name='storacctcapitastartable', 
                                account_key='Z/dhpkNhR7DY0goHVsaPldFCnqzydIN/CunYh324E8M82eqOGeupYFS5CGz7CS18FDm1wWmWPEX3ecxJ23HqmA==',
@@ -142,30 +163,37 @@ if __name__ == '__main__':
                                queue_get='loitg-queue-get',
                                queue_push='loitg-queue-push',
                                )
-    except Exception as e:
+    except AzureException as e:
+        print 'Connection Error: ' + 'Wrong credential maybe'
         print e
-#         logging.error(e)
-        raise
-    
+
     import sys
     print(sys.stdout.encoding)
     print service.count()
-    
+    sleep(20)
     m, rinfo = service.getReceiptInfo()
-    print rinfo.toString()
-    if m is not None:
-        lp = service.getImage(rinfo.receiptBlobName+'t')
-         
-         
-        import cv2
-        img = cv2.imread(lp)
-        cv2.imshow('dd', img)
-        cv2.waitKey(-1)
-        
-        service.deleteMessage(m)
-        service.deleteImage(rinfo.receiptBlobName)
-    
-    else:
+    if m is not None: # got message
+        if rinfo is not None: # parse success
+            print rinfo.toString()
+            lp = service.getImage(rinfo.receiptBlobName+'t')
+            if lp is not None:
+                if len(lp) > 0:
+                    import cv2
+                    img = cv2.imread(lp)
+                    cv2.imshow('dd', img)
+                    cv2.waitKey(-1)
+                    
+                    service.deleteMessage(m)
+                    service.deleteImage(rinfo.receiptBlobName)
+                else: # invalid string '' means blob not exist, so should delete
+                    pass
+            else: #exception, wait til next message
+                sleep(4)
+        else: # fail parse json
+            # delete message
+            pass
+    else: # no message available
+        #sleep
         print('Empty')
     
     
