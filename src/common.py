@@ -18,6 +18,7 @@ args.device = '/device:CPU:0'
 args.javapath = '/home/loitg/location_nn/'
 args.dbfile = 'top20_1.csv'
 args.locationnjar = 'location_nn.jar'
+args.download_dir = '/home/loitg/location_nn/downloads'
 
 if __name__ == '__main__':
     pass
