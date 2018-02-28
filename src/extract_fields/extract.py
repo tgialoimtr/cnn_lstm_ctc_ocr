@@ -233,7 +233,7 @@ class TotalExtractor(object):
             return float(self.features[0][7])
         else:
             top = self.features[:2]
-            if top[0][:6] == top[0][:6]:
+            if top[0][:6] == top[1][:6]:
                 if self.similar(top[0][7], top[1][7]):
                     return float(top[0][7])
                 else:
@@ -312,7 +312,7 @@ class DateExtractor(object):
                             cand_d = datetime.strptime(cand_d_str, dateformat).date()
                         except Exception:
                             continue
-                        today = date(2017,8,2) #datetime.today().date()
+                        today = datetime.today().date() #date(2017,8,2)
                         if cand_d <= today:
 #                             print(Fore.RED + str((today - cand_d).days) + ': ' + str(cand_d))
                             date_cands.append([(today - cand_d).days, cand_d, i])
@@ -359,6 +359,7 @@ class CLExtractor(object):
         self.locode_extr = LocodeExtractor(args.dbfile, args.locationnjar)
     
     def extract(self, lines, kwvalues=None):
+        print(type(lines[0]))
         locode0 = self.locode_extr.extract(lines) 
         self.kwt.detect(lines)
         datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
@@ -387,10 +388,7 @@ if __name__ == '__main__':
                 allrs[fn].append(temp)
     
     kwt = KWDetector()
-    date_extr = DateExtractor()
-    total_extr = TotalExtractor()
-    id_extr = ReceiptIdExtractor()
-    locode_extr = LocodeExtractor('top20_1.csv', 'location_nn.jar')
+    extractor = CLExtractor()
     currentfile = '1501682910546_dea1e329-695e-4c05-a750-f04f168b12d5.JPG'
     for fn, lines in allrs.iteritems():
         if currentfile is not None:
@@ -399,18 +397,14 @@ if __name__ == '__main__':
             else:
                 currentfile = None
                 
-        locode0 = locode_extr.extract(lines)
+        a,b,c,d = extractor.extract(lines)
         
         kwt.detect(lines)
-        datetime0 = date_extr.extract(lines, kwt.kwExtractor.values)
-        if datetime0 is not None:
-            datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
-        else:
-            datetime0=''
-        total0 = total_extr.extract(lines, kwt.kwExtractor.values)
-        rid0 = id_extr.extract(lines, kwt.kwExtractor.values)
         
-        print(Fore.RED + str(locode0)) 
+        print(Fore.RED + 'rid: ' + a)
+        print(Fore.RED + 'locode: ' +b)
+        print(Fore.RED + 'total: ' + str(c))
+        print(Fore.RED + 'date: ' +','+d) 
         print(Fore.RED + fn + ':') 
         k = raw_input("next")
     
