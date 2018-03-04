@@ -69,14 +69,13 @@ class LocalServer(object):
         self.manager = manager
     
     def register(self):
-        print 'register called -------------------------------------------'
         self.maxclientid += 1
         clientid = str(self.maxclientid)
         self.client_inputs[clientid] = self.manager.Queue()
         self.client_outputs[clientid] = self.manager.Queue()
         return clientid, self.client_inputs[clientid], self.client_outputs[clientid]
         
-    def run(self, states):
+    def run(self, states, logger):
         with tf.Graph().as_default():
             image,width = validate._get_input(args.bucket_size) # Placeholder tensors
  
@@ -98,7 +97,8 @@ class LocalServer(object):
             
                 sess.run(init_op)
                 restore_model(sess, validate._get_checkpoint(self.modeldir)) # Get latest checkpoint
-                print(str(time()) + 'server started, waiting image ...') 
+                logger.info('%s, server started, waiting image ...', str(time()))
+#                 print(str(time()) + 'server started, waiting image ...') 
                 states['server_started'] = True
                 while True:
                     for clientid, clientq in self.client_inputs.iteritems():
@@ -128,10 +128,8 @@ class LocalServer(object):
                                 batch = np.concatenate((batch, additional_batch))
                                 widths = np.concatenate((widths, additional_width))
                             tt = time()
-                            print('---------------')
-                            print(str(time()) + ': BATCH INFO: ' + str(args.bucket_size - batch.shape[0]) + ',' + str(batch.shape[2]) + ',' + '{:06.2f}'.format(width_mean))
                             p = sess.run(predictions,{ image: batch, width: widths} )
-                            print(str(time()) + ': BATCH TIME: ' + '{:06.3f}'.format(time() - tt) + ',' + '{:06.6f}'.format((time() - tt)/batch.shape[2]))
+                            logger.debug('batch info: %d, %s, %6.2f; timeL%6.6f', args.bucket_size - batch.shape[0], str(batch.shape[2]), width_mean, (time() - tt)/batch.shape[2])
                             for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
                                 if clientid == '0': continue
                                 txt = p[0][i,:]
@@ -140,8 +138,9 @@ class LocalServer(object):
                                 try:
                                     self.client_outputs[clientid].put((imgid, txt), block=False)
                                 except Full:
-                                    print(str(time()) + ': queue get ' + clientid + ' full')
-                     
+                                    log.warning('queue get %d full', clientid)
+                    
+                    sleep(0.5)
     
 if __name__ == '__main__':
     pass

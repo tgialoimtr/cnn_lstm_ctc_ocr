@@ -11,6 +11,7 @@ from receipt import ExtractedData, ReceiptSerialize
 import logging
 from azure.common import AzureException, AzureMissingResourceHttpError
 from time import sleep
+from common import args
 
 # DefaultEndpointsProtocol=https;
 # AccountName=capitastarstorageacctest;AccountKey=A51dFg8jfMWTsjRSvT40GwaHxcNnUGz1bRiu6JZAuvnLBthzh+iITi6507REwLYo23ZZeCPVWY1i8zLRTxAvnQ==;
@@ -34,18 +35,16 @@ rootLogger.addHandler(consoleHandler)
 class AzureService(object):
     VISIBILITY_TIMEOUT = 5
 
-    def __init__(self, account_name, account_key, container_name, queue_get, queue_push):
+    def __init__(self, connection_string, container_name, queue_get, queue_push):
         self.ctnname = container_name
         self.getname = queue_get
         self.pushname = queue_push
         
-        self.qs = QueueService(account_name=account_name, 
-                               account_key=account_key,
+        self.qs = QueueService(connection_string=connection_string,
                                protocol='https',
 #                                endpoint_suffix='core.windows.net'
                                 )
-        self.bs = BlockBlobService(account_name=account_name, 
-                         account_key=account_key)
+        self.bs = BlockBlobService(connection_string=connection_string)
         self.qs.create_queue(self.getname, timeout=1)
         self.qs.create_queue(self.pushname, timeout=1)
         self.bs.create_container(self.ctnname, timeout=1)
@@ -157,8 +156,7 @@ if __name__ == '__main__':
     rootLogger.info('Started')
     print('started')
     try:
-        service = AzureService(account_name='storacctcapitastartable', 
-                               account_key='Z/dhpkNhR7DY0goHVsaPldFCnqzydIN/CunYh324E8M82eqOGeupYFS5CGz7CS18FDm1wWmWPEX3ecxJ23HqmA==',
+        service = AzureService(connection_string=args.connection_string,
                                container_name='loitg-local',
                                queue_get='loitg-queue-get',
                                queue_push='loitg-queue-push',

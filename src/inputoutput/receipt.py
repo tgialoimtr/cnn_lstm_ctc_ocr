@@ -17,7 +17,20 @@ class ExtractedData(object):
         self.receiptId = receiptId
         self.receiptDateTime = receiptDateTime
         self.status = status
-    
+
+    @classmethod
+    def failData(cls):
+        rs = cls()
+        rs.mallName = None
+        rs.storeName = None
+        rs.locationCode = None
+        rs.zipcode = None
+        rs.gstNo = None
+        rs.totalNumber = 0.0
+        rs.receiptId = None
+        rs.receiptDateTime = None
+        rs.status = 'FAIL'
+        return rs        
         
 class ReceiptSerialize(object):
     '''

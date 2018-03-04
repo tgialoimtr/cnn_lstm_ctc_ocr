@@ -9,21 +9,23 @@ from Queue import Empty, Full
 from common import args
     
 class BatchLinePredictor(object):
-    def __init__(self, server):
+    def __init__(self, server, logger):
 #         self.lock = threading.Lock()
         self.clientid, self.putq, self.getq = server.register()
+        logger.info('receive clientid %s', self.clientid)
         
-    def predict_batch(self, img_list):
+    def predict_batch(self, img_list, logger):
         while True:
             try:
                 self.putq.get(block=False)
             except Empty:
                 break
         for i, img in enumerate(img_list):
-#             print(str(time()) + ': putting ' + str(img.shape) + str(i) + ' to queue put ' + self.clientid)
             self.putq.put((str(i), time(), img), block=True)
+        logger.debug('put %d imgs to queue put %s', len(img_list), self.clientid)
         pred = {}
         waitcount = 0
+        a = 1.0/0.0
         while True:
             try:
                 topqueue = self.getq.get(timeout=args.qget_wait_interval)

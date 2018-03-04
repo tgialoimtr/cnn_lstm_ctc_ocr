@@ -210,9 +210,9 @@ class TotalExtractor(object):
                                     1 if insubtotal else 0,
                                     i,
                                     current))
-        print(str(assertkwvalues['total']) + '===' + str(len(kwvalues['total'])))
-        print(str(assertkwvalues['subtotal']) + '===' + str(len(kwvalues['subtotal'])))
-        print(str(assertkwvalues['cash']) + '===' + str(len(kwvalues['cash'])))
+#         print(str(assertkwvalues['total']) + '===' + str(len(kwvalues['total'])))
+#         print(str(assertkwvalues['subtotal']) + '===' + str(len(kwvalues['subtotal'])))
+#         print(str(assertkwvalues['cash']) + '===' + str(len(kwvalues['cash'])))
         self.features.sort(reverse=True)
     
     def extractPrice(self):

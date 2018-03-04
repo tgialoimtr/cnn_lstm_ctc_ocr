@@ -249,11 +249,11 @@ def extract_line(image,linedesc,pad=5):
         return None
 
 class PagePredictor:
-    def __init__(self, localserver):
+    def __init__(self, localserver, logger):
 #         self.lock = threading.Lock()
-        self.linepredictor = BatchLinePredictor(localserver)
+        self.linepredictor = BatchLinePredictor(localserver, logger)
     
-    def ocrImage(self, imgpath):
+    def ocrImage(self, imgpath, logger):
         tt=time.time()
         
         img_grey = ocrolib.read_image_gray(imgpath)
@@ -334,8 +334,8 @@ class PagePredictor:
 #             cv2.imwrite(directory+'/'+ str(i) + '_' + hihi +'_sau.JPG', sau*255)
 #                
 #         return 'hihi'
-        pred_dict = self.linepredictor.predict_batch(line_list)
-        print(pred_dict)
+        pred_dict = self.linepredictor.predict_batch(line_list, logger)
+        logger.debug('%s', str(pred_dict))
         for i in range(len(line_list)):
             result = psegutils.record(bounds = bounds_list[i], text=pred_dict[i], available=True)
             location_text.append(result)
@@ -372,12 +372,12 @@ class PagePredictor:
                 continue       
             
         location_text.sort(key=lambda x: x.bounds[0].stop)   
-        ret = ''
+        lines = []
         for i, result in enumerate(location_text): 
-            if result.available:   
-                ret += normalize_text(result.text) + '\n'
+            if result.available:
+                lines.append(result.text)
     #             ocrolib.write_text(args.outtext+str(i)+".txt",pred)/home/loitg/Downloads/complex-bg
-        return ret
+        return lines
                     
                     
 if __name__ == "__main__":
