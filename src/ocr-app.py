@@ -9,7 +9,7 @@ from logging.handlers import TimedRotatingFileHandler
 from processing.pagepredictor import PagePredictor
 from processing.server import LocalServer
 from extract_fields.extract import CLExtractor
-from inputoutput.receipt import ExtractedData
+from inputoutput.receipt import ExtractedData, ReceiptSerialize
 from common import args
 
 def createLogger(name):
@@ -47,20 +47,19 @@ def ocrQueue(reader, num, states):
 #     print service.count()
     with open(args.javapath + str(num) + '.txt','a') as of:
         while True:
-            states[num] += 1
             extdata = None
             try:
-                lines = reader.ocrImage('/home/loitg/Downloads/complex-bg/8a.JPG', logger)
+                lines = reader.ocrImage('/home/loitg/Downloads/complex-bg/22.JPG', logger)
                 logger.info('process %d has %d lines.',num, len(lines))
-            except Exception:
-                loggger.exception('EXCEPTION WHILE EXTRACTING LINES')
-                extdata = ExtractedData.failData()
-            
-            try:
+                for line in lines:
+                    logger.debug(line)
                 rid, locode, total, dt = extractor.extract(lines)
             except Exception:
-                loggger.exception('EXCEPTION WHILE EXTRACTING FIELDS')
-                extdata = ExtractedData.failData()
+                logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
+                extdata = ExtractedData()
+            if extdata is None:
+                extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
+                states[num] += 1
             meta = ReceiptSerialize()
             outmsg = str(meta.combineExtractedData(extdata))
             logger.info('%d, %s', states[num], outmsg)
@@ -137,15 +136,16 @@ if __name__ == "__main__":
                     logger.info('add new state process %d: %d', i, oldstate[i])
                 else:
                     if oldstate[i] == states[i]:
-                        logger.error('state of process %d unchange, need restart', oldstate[i])
+                        logger.error('PROCESS %d UNCHANGE, NEED RESTART', oldstate[i])
                         #restart
 #                         processes[i].terminate()
 #                         processes[i].join()
 #                         processes[i] = Process(target=ocrQueue, args=(reader, i, states))
+#                         processes[i].start()
                     else:
                         logger.info('state of process %d changed: %d -> %d', i, oldstate[i], states[i])
                         oldstate[i] = states[i]
-            sleep(3*args.time_per_receipt)
+            sleep(10*args.time_per_receipt)
 
     except KeyboardInterrupt:
         logger.info('Caught KeyboardInterrupt, terminating...')

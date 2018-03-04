@@ -21,21 +21,10 @@ from common import args
 # AccountName=storacctcapitastartable;
 # AccountKey=Z/dhpkNhR7DY0goHVsaPldFCnqzydIN/CunYh324E8M82eqOGeupYFS5CGz7CS18FDm1wWmWPEX3ecxJ23HqmA==
 
-logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
-rootLogger = logging.getLogger()
-
-fileHandler = logging.FileHandler(os.path.join(args.javapath, 'log.txt'))
-fileHandler.setFormatter(logFormatter)
-rootLogger.addHandler(fileHandler)
-
-consoleHandler = logging.StreamHandler()
-consoleHandler.setFormatter(logFormatter)
-rootLogger.addHandler(consoleHandler)
-
 class AzureService(object):
     VISIBILITY_TIMEOUT = 5
 
-    def __init__(self, connection_string, container_name, queue_get, queue_push):
+    def __init__(self, connection_string, container_name, queue_get, queue_push, logger=None):
         self.ctnname = container_name
         self.getname = queue_get
         self.pushname = queue_push
@@ -48,25 +37,31 @@ class AzureService(object):
         self.qs.create_queue(self.getname, timeout=1)
         self.qs.create_queue(self.pushname, timeout=1)
         self.bs.create_container(self.ctnname, timeout=1)
-        print 'Init Azure success'
+        if logger: logger.info('Init Azure success')
     
-    def pushMessage(self, message, qname=None):
+    def pushMessage(self, message, qname=None, logger=None):
         if qname is None:
             qname = self.pushname
         try:
             self.qs.put_message(self.pushname, message) 
         except Exception as e:
-            print 'ERROR PUSH MESSAGE '
-            print e
+            if logger:
+                logger.exception('ERROR PUSH MESSAGE ')
+            else:
+                print 'ERROR PUSH MESSAGE '
+                print e
         
-    def getMessage(self, qname=None, num=1):
+    def getMessage(self, qname=None, num=1, logger=None):
         if qname is None:
             qname = self.getname
         try:
             message = self.qs.get_messages(qname, num, visibility_timeout=self.VISIBILITY_TIMEOUT)
         except Exception as e:
-            print 'ERROR GET MESSAGE '
-            print e
+            if logger:
+                logger.exception('ERROR GET MESSAGE ')
+            else:
+                print 'ERROR GET MESSAGE '
+                print e
             return []
         return message
     
@@ -102,17 +97,23 @@ class AzureService(object):
                 self.qs.put_message(self.getname, receipt_metadata.toString()) 
                 self.bs.create_blob_from_path(self.ctnname, receipt_metadata.receiptBlobName, os.path.join(folderpath, filename), max_connections=2, timeout=None)
     
-    def getImage(self, imgname):
+    def getImage(self, imgname, logger=None):
         localpath= os.path.join(args.download_dir, imgname)
         try:
             self.bs.get_blob_to_path(self.ctnname, imgname, localpath)
         except AzureMissingResourceHttpError as e:
-            print 'Blob named ' + imgname + ' doesnot exist.' 
-            print e            
+            if logger:
+                logger.error('Blob named ' + imgname + ' doesnot exist.' , exec_info=True)
+            else:
+                print 'Blob named ' + imgname + ' doesnot exist.' 
+                print e            
             return ''
         except Exception as e:
-            print 'Exception while getting blob.' 
-            print e            
+            if logger:
+                logger.error('Exception while getting blob.', exec_info=True)
+            else:
+                print 'Exception while getting blob.' 
+                print e            
             return None
         return localpath
     
@@ -150,10 +151,6 @@ class AzureService(object):
         print(str(count) + ' from container') 
           
 if __name__ == '__main__':
-    rootLogger.debug('This message should appear on the console')
-    rootLogger.info('So should this')
-    rootLogger.warning('And this, too')
-    rootLogger.info('Started')
     print('started')
     try:
         service = AzureService(connection_string=args.connection_string,

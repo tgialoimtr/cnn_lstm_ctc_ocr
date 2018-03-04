@@ -25,14 +25,13 @@ class BatchLinePredictor(object):
         logger.debug('put %d imgs to queue put %s', len(img_list), self.clientid)
         pred = {}
         waitcount = 0
-        a = 1.0/0.0
         while True:
             try:
                 topqueue = self.getq.get(timeout=args.qget_wait_interval)
                 imgid, txt = topqueue
                 pred[int(imgid)] = txt
-                if len(pred) == len(img_list):
-                    return pred
+#                 if len(pred) == len(img_list):
+#                     return pred
             except Empty:
                 waitcount += 1
 #                 print(str(time()) + ': queue get ' + self.clientid + ' empty')

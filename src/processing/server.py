@@ -129,7 +129,7 @@ class LocalServer(object):
                                 widths = np.concatenate((widths, additional_width))
                             tt = time()
                             p = sess.run(predictions,{ image: batch, width: widths} )
-                            logger.debug('batch info: %d, %s, %6.2f; timeL%6.6f', args.bucket_size - batch.shape[0], str(batch.shape[2]), width_mean, (time() - tt)/batch.shape[2])
+                            logger.debug('batch info: %d, %s, %6.2f; time:%6.6f', args.bucket_size - batch.shape[0], str(batch.shape[2]), width_mean, (time() - tt)/batch.shape[2])
                             for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
                                 if clientid == '0': continue
                                 txt = p[0][i,:]

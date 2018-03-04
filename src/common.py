@@ -24,7 +24,7 @@ args.queue_get_name = 'loitg-queue-get'
 args.queue_push_name = 'loitg-queue-push'
 args.container_name = 'loitg-local'
 args.receipt_waiting_interval = 10 #seconds
-args.time_per_receipt = 50
+args.time_per_receipt = 20
 
 if __name__ == '__main__':
     pass

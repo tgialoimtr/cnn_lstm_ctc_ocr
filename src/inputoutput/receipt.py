@@ -7,7 +7,7 @@ import decimal
 import simplejson as json
 
 class ExtractedData(object):
-    def __init__(self, mallName, storeName, locationCode, zipcode, gstNo, totalNumber, receiptId, receiptDateTime, status):
+    def __init__(self, mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, totalNumber=0.0, receiptId=None, receiptDateTime=None, status='FAIL'):
         self.mallName = mallName
         self.storeName = storeName
         self.locationCode = locationCode
@@ -16,21 +16,7 @@ class ExtractedData(object):
         self.totalNumber = totalNumber
         self.receiptId = receiptId
         self.receiptDateTime = receiptDateTime
-        self.status = status
-
-    @classmethod
-    def failData(cls):
-        rs = cls()
-        rs.mallName = None
-        rs.storeName = None
-        rs.locationCode = None
-        rs.zipcode = None
-        rs.gstNo = None
-        rs.totalNumber = 0.0
-        rs.receiptId = None
-        rs.receiptDateTime = None
-        rs.status = 'FAIL'
-        return rs        
+        self.status = status    
         
 class ReceiptSerialize(object):
     '''
