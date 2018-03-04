@@ -162,7 +162,7 @@ class TotalExtractor(object):
         
                     
     def similar(self, floatstr1, floatstr2):
-        return abs(float(floatstr1) - float(floatstr2)) < 0.05
+        return abs(float(floatstr1) - float(floatstr2)) < 0.1
     
     def buildFeatures(self, kwvalues):
         linerange_multiple = +3#-3
@@ -358,18 +358,21 @@ class CLExtractor(object):
         self.id_extr = ReceiptIdExtractor()
         self.locode_extr = LocodeExtractor(args.dbfile, args.locationnjar)
     
-    def extract(self, lines, kwvalues=None):        
+    def extract(self, orilines, kwvalues=None):        
+        lines = orilines[:]
         self.kwt.detect(lines)
-        datetime0 = self.date_extr.extract(lines[:], self.kwt.kwExtractor.values)
+        datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
         if datetime0 is not None:
             datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
         else:
             datetime0=''
+        lines = orilines[:]
         self.kwt.detect(lines)
-        total0 = self.total_extr.extract(lines[:], self.kwt.kwExtractor.values)
+        total0 = self.total_extr.extract(lines, self.kwt.kwExtractor.values)
+        lines = orilines[:]
         self.kwt.detect(lines)
-        rid0 = self.id_extr.extract(lines[:], self.kwt.kwExtractor.values)
-        locode0 = self.locode_extr.extract(lines)
+        rid0 = self.id_extr.extract(lines, self.kwt.kwExtractor.values)
+        locode0 = self.locode_extr.extract(orilines)
         locs = locode0.split('=,=')
         if len(locs) < 5:
             extdata = ExtractedData(mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, 
