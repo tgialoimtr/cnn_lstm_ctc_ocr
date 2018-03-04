@@ -69,8 +69,8 @@ class LocalServer(object):
         self.manager = manager
     
     def register(self):
-        self.maxclientid += 1
         clientid = str(self.maxclientid)
+        self.maxclientid += 1
         self.client_inputs[clientid] = self.manager.Queue()
         self.client_outputs[clientid] = self.manager.Queue()
         return clientid, self.client_inputs[clientid], self.client_outputs[clientid]
@@ -97,50 +97,52 @@ class LocalServer(object):
             
                 sess.run(init_op)
                 restore_model(sess, validate._get_checkpoint(self.modeldir)) # Get latest checkpoint
-                logger.info('%s, server started, waiting image ...', str(time()))
+                logger.info('server started, waiting image ...')
 #                 print(str(time()) + 'server started, waiting image ...') 
                 states['server_started'] = True
-                while True:
-                    for clientid, clientq in self.client_inputs.iteritems():
-                        try:
-                            imgid, imgtime, img = clientq.get(block=False)
-                            success_count = 0
-                            for bucket in self.buckets:
-                                success = bucket.addImgToBucket(clientid, imgid, imgtime, img)
-                                if success: 
-                                    success_count += 1
-#                                     print(str(time()) + ': image ' + str(img.shape) + ' from ' + clientid +' add successful to bucket ' + str(bucket.widthrange))
-                            assert(success_count==1)
-                        except Empty:
-#                             print(str(time()) + ': queue put ' + clientid + ' empty')
-                            sleep(0.1)
-
-                    
-                    for bucket in self.buckets:
-                        bckt = bucket.getBatch()
-                        if bckt is not None:
-                            infos, batch, widths = bckt
-                            width_mean = np.mean(widths)
-                            if batch.shape[0] < args.bucket_size:
-                                additional_batch = np.zeros(shape=(args.bucket_size - batch.shape[0], batch.shape[1], batch.shape[2], batch.shape[3]), dtype=np.float32)
-                                additional_width = np.ones(shape=(args.bucket_size - batch.shape[0],), dtype=np.int32)*widths[0]
-                                infos += [('0','0')]*(args.bucket_size - batch.shape[0])
-                                batch = np.concatenate((batch, additional_batch))
-                                widths = np.concatenate((widths, additional_width))
-                            tt = time()
-                            p = sess.run(predictions,{ image: batch, width: widths} )
-                            logger.debug('batch info: %d, %s, %6.2f; time:%6.6f', args.bucket_size - batch.shape[0], str(batch.shape[2]), width_mean, (time() - tt)/batch.shape[2])
-                            for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
-                                if clientid == '0': continue
-                                txt = p[0][i,:]
-                                txt = [i for i in txt if i >= 0]
-                                txt = validate._get_string(txt)
-                                try:
-                                    self.client_outputs[clientid].put((imgid, txt), block=False)
-                                except Full:
-                                    log.warning('queue get %d full', clientid)
-                    
-                    sleep(0.5)
+                try:
+                    while True:
+                        for clientid, clientq in self.client_inputs.iteritems():
+                            try:
+                                imgid, imgtime, img = clientq.get(block=False)
+                                success_count = 0
+                                for bucket in self.buckets:
+                                    success = bucket.addImgToBucket(clientid, imgid, imgtime, img)
+                                    if success: 
+                                        success_count += 1
+    #                                     print(str(time()) + ': image ' + str(img.shape) + ' from ' + clientid +' add successful to bucket ' + str(bucket.widthrange))
+                                assert(success_count==1)
+                            except Empty:
+    #                             print(str(time()) + ': queue put ' + clientid + ' empty')
+                                sleep(0.1)
+    
+                        
+                        for bucket in self.buckets:
+                            bckt = bucket.getBatch()
+                            if bckt is not None:
+                                infos, batch, widths = bckt
+                                width_mean = np.mean(widths)
+                                if batch.shape[0] < args.bucket_size:
+                                    additional_batch = np.zeros(shape=(args.bucket_size - batch.shape[0], batch.shape[1], batch.shape[2], batch.shape[3]), dtype=np.float32)
+                                    additional_width = np.ones(shape=(args.bucket_size - batch.shape[0],), dtype=np.int32)*widths[0]
+                                    infos += [('-1','0')]*(args.bucket_size - batch.shape[0])
+                                    batch = np.concatenate((batch, additional_batch))
+                                    widths = np.concatenate((widths, additional_width))
+                                tt = time()
+                                p = sess.run(predictions,{ image: batch, width: widths} )
+                                logger.debug('batch info: %d, %s, %6.2f; time:%6.6f', args.bucket_size - batch.shape[0], str(batch.shape[2]), width_mean, (time() - tt)/batch.shape[2])
+                                for (clientid, imgid), i in zip(infos, range(p[0].shape[0])):
+                                    if clientid == '-1': continue
+                                    txt = p[0][i,:]
+                                    txt = [i for i in txt if i >= 0]
+                                    txt = validate._get_string(txt)
+                                    try:
+                                        self.client_outputs[clientid].put((imgid, txt), block=False)
+                                    except Full:
+                                        log.warning('queue get %d full', clientid)
+                        
+                except Exception:
+                    logger.exception('SERVER ERROR')
     
 if __name__ == '__main__':
     pass

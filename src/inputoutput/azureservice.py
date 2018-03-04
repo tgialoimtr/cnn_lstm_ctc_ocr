@@ -65,8 +65,8 @@ class AzureService(object):
             return []
         return message
     
-    def getReceiptInfo(self):
-        message = self.getMessage()
+    def getReceiptInfo(self, logger=None):
+        message = self.getMessage(logger=logger)
         if len(message) > 0:
             rinfo = ReceiptSerialize.fromjson(message[0].content)   
             return message[0], rinfo
@@ -85,7 +85,7 @@ class AzureService(object):
                 'blob_count': bc
                 } 
     
-    def uploadFolder(self, folderpath):
+    def uploadFolder(self, folderpath, logger):
         for filename in os.listdir(folderpath):
             if len(filename) > 4:
                 suffix = filename[-4:].upper()
@@ -96,6 +96,7 @@ class AzureService(object):
                 receipt_metadata.receiptBlobName = unicode(filename, 'utf-8')
                 self.qs.put_message(self.getname, receipt_metadata.toString()) 
                 self.bs.create_blob_from_path(self.ctnname, receipt_metadata.receiptBlobName, os.path.join(folderpath, filename), max_connections=2, timeout=None)
+                logger.info('upload %s', filename)
     
     def getImage(self, imgname, logger=None):
         localpath= os.path.join(args.download_dir, imgname)
@@ -119,11 +120,25 @@ class AzureService(object):
     
     def deleteMessage(self, message, qname=None): 
         if qname is None:
-            qname = self.getname  
-        self.qs.delete_message(qname, message.id, message.pop_receipt)
-     
-    def deleteImage(self, imgname):   
-        self.bs.delete_blob(self.ctnname, imgname)
+            qname = self.getname
+        try:
+            self.qs.delete_message(qname, message.id, message.pop_receipt)
+        except Exception as e:
+            if logger:
+                logger.exception('ERROR DELETE MESSAGE ')
+            else:
+                print 'ERROR DELETE MESSAGE '
+                print e
+                
+    def deleteImage(self, imgname):
+        try: 
+            self.bs.delete_blob(self.ctnname, imgname)
+        except Exception as e:
+            if logger:
+                logger.exception('ERROR DELETE IMAGE ')
+            else:
+                print 'ERROR DELETE IMAGE '
+                print e
         
     def cleanUp(self):
         count = 0

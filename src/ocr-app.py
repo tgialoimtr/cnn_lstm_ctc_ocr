@@ -10,13 +10,14 @@ from processing.pagepredictor import PagePredictor
 from processing.server import LocalServer
 from extract_fields.extract import CLExtractor
 from inputoutput.receipt import ExtractedData, ReceiptSerialize
+from inputoutout.azureservice import AzureService
 from common import args
 
 def createLogger(name):
     logFormatter = logging.Formatter("%(asctime)s [%(name)-12.12s] [%(levelname)-5.5s]  %(message)s")
     rootLogger = logging.getLogger(name)
     
-    fileHandler = TimedRotatingFileHandler(os.path.join(args.javapath, 'log.' + name) , when='midnight', interval=2, backupCount=5)
+    fileHandler = TimedRotatingFileHandler(os.path.join(args.javapath, 'log.' + name) , when='midnight', backupCount=10)
     fileHandler.setFormatter(logFormatter)
     rootLogger.addHandler(fileHandler)
     
@@ -26,6 +27,18 @@ def createLogger(name):
     rootLogger.setLevel(logging.DEBUG)
     return rootLogger
 
+def createAzureService(logger):
+    try:
+        service = AzureService(connection_string=args.connection_string,
+                               container_name=args.container_name,
+                               queue_get=args.queue_get_name,
+                               queue_push=args.queue_push_name,
+                               )
+        return service
+    except AzureException as e:
+        logger.error('Connection Error: Maybe wrong credential.')
+        return None
+    
 def runserver(server, states):
     logger = createLogger('server')
     server.run(states, logger)
@@ -34,161 +47,167 @@ def ocrQueue(reader, num, states):
     logger = createLogger('worker-' + str(num))
     logger.info('process %d start pushing image.', num)
     extractor = CLExtractor()
-#     try:
-#         service = AzureService(connection_string=args.connection_string,
-#                                container_name='loitg-local',
-#                                queue_get='loitg-queue-get',
-#                                queue_push='loitg-queue-push',
-#                                )
-#     except AzureException as e:
-#         print 'Connection Error: ' + 'Wrong credential maybe'
-#         print e
+    try:
+        service = AzureService(connection_string=args.connection_string,
+                               container_name='loitg-local',
+                               queue_get='loitg-queue-get',
+                               queue_push='loitg-queue-push',
+                               )
+    except AzureException as e:
+        logger.error('Connection Error: Maybe wrong credential.')
 
-#     print service.count()
-    with open(args.javapath + str(num) + '.txt','a') as of:
-        while True:
-            extdata = None
-            try:
-                lines = reader.ocrImage('/home/loitg/Downloads/complex-bg/22.JPG', logger)
-                logger.info('process %d has %d lines.',num, len(lines))
-                for line in lines:
-                    logger.debug(line)
-                rid, locode, total, dt = extractor.extract(lines)
-            except Exception:
-                logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
-                extdata = ExtractedData()
-            if extdata is None:
-                extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
-                states[num] += 1
-            meta = ReceiptSerialize()
-            outmsg = str(meta.combineExtractedData(extdata))
-            logger.info('%d, %s', states[num], outmsg)
-            of.write(str(states[num]) + ',' + outmsg + '\n')
-            of.flush()
+    while True:
+        extdata = None
+        try:
+            lines = reader.ocrImage('/home/loitg/Downloads/complex-bg/22.JPG', logger)
+            logger.info('process %d has %d lines.',num, len(lines))
+            for line in lines:
+                logger.debug(line)
+            rid, locode, total, dt = extractor.extract(lines)
+        except Exception:
+            logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
+            extdata = ExtractedData()
+        if extdata is None:
+            extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
+            states[num] += 1
+        meta = ReceiptSerialize()
+        outmsg = str(meta.combineExtractedData(extdata))
+        logger.info('%d, %s', states[num], outmsg)
             
-            
-#             m, rinfo = service.getReceiptInfo()
-#             if m is not None: # got message
-#                 if rinfo is not None: # parse success
-#                     print rinfo.toString()
-#                     lp = service.getImage(rinfo.receiptBlobName+'t')
-#                     if lp is not None:
-#                         if len(lp) > 0:
-#                             import cv2
-#                             img = cv2.imread(lp)
-#                             cv2.imshow('dd', img)
-#                             cv2.waitKey(-1)
-#                             
-#                             lines = reader.ocrImage(lp)
-#                             rid, locode, total, dt = extractor.extract(lines)
-#                             print str(i) + ',' + filename + ',' + rid + ',' + locode + ',' + '{:05.2f}'.format(total) + ',' + dt
-#                             i += 1
-#                             of.write(str(i) + ',' + filename + ',' + rid + ',' + locode + ',' + '{:05.2f}'.format(total) + ',' + dt + '\n')
-#                             of.flush()
-#                                               
-#                             service.deleteMessage(m)
-#                             service.deleteImage(rinfo.receiptBlobName)
-#                         else: # invalid string '' means blob not exist, so should delete
-#                             print 'Blob doesnot exist, will delete message ' + m.content
-#                             service.deleteMessage(m)
-#                     else: #exception, wait til next message
-#                         sleep(args.receipt_waiting_interval)
-#                 else: # fail parse json
-#                     # delete message
-#                     print 'Bad message format, will delete message ' + m.content
-#                     service.deleteMessage(m)
-#             else: # no message available
-#                 sleep(args.receipt_waiting_interval)
+    while True:  
+        m, rinfo = service.getReceiptInfo(logger=logger)
+        if m is not None: # got message
+            if rinfo is not None: # parse success
+                logger.info('message after parsed: %s', rinfo.toString())
+                lp = service.getImage(rinfo.receiptBlobName, logger=logger)
+                if lp is not None:
+                    if len(lp) > 0:
+                        extdata = None
+                        try:
+                            lines = reader.ocrImage(lp, logger)
+                            logger.info('process %d has %d lines.',num, len(lines))
+                            for line in lines:
+                                logger.debug(line)
+                            rid, locode, total, dt = extractor.extract(lines)
+                        except Exception:
+                            logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
+                            extdata = ExtractedData()
+                        if extdata is None:
+                            extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
+                            states[num] += 1
+                        outmsg = rinfo.combineExtractedData(extdata)
+                        logger.info('%d, %s', states[num], outmsg)
+                        service.pushMessage(outmsg, logger=logger)
+                        service.deleteMessage(m, logger=logger)
+                        service.deleteImage(rinfo.receiptBlobName, logger=logger)
+                    else: # invalid string '' means blob not exist, so should delete
+                        logger.error('Blob doesnot exist, will delete message %s', m.content)
+                        service.deleteMessage(m, logger=logger)
+                else: #exception, wait til next message
+                    sleep(args.receipt_waiting_interval)
+            else: # fail parse json
+                # delete message
+                logger.error('Bad message format, will delete message %s', m.content)
+                service.deleteMessage(m, logger=logger)
+        else: # no message available
+            sleep(args.receipt_waiting_interval)
 
 
 
 if __name__ == "__main__":
     logger = createLogger('main')
-    manager = Manager()
-    states = manager.dict()
-    server = LocalServer(args.model_path, manager)
-    serverprocess = Process(target=runserver, args=(server, states)) 
-
-    processes = []
-    process_args = []
-    for i in range(args.numprocess):
-        reader = PagePredictor(server, logger)
-        states[i] = 0
-        p = Process(target=ocrQueue, args=(reader, i, states))
-        processes.append(p)
-        process_args.append((reader, i, states))
-        logger.info('new process %d with args ...', i)
+    service = createAzureService(logger)
+    if args.mode == 'delete':
+        service.cleanUp()
+        exit(0)
+    elif args.mode == 'upload':
+        service.uploadFolder(args.imgsdir, logger)
+        exit(0)
+    elif args.mode == 'show':
+        logger.info('azure info: %s', str(service.count()))
+        exit(0)
+    elif args.mode == 'process':
+        manager = Manager()
+        states = manager.dict()
+        server = None
+        serverprocess = None
+        processes = []
+        process_args = []
         
-
-    states['server_started'] = False
-    serverprocess.start()
-    while not states['server_started']:
-        sleep(1)
-    for i in range(args.numprocess):
-        p.start()
-
-    try:
-        oldstate = {}
-        while True:
+        def initAll():
+            global server, serverprocess, processes, process_args
+            server = LocalServer(args.model_path, manager)
+            serverprocess = Process(target=runserver, args=(server, states)) 
+            processes = []
+            process_args = []
             for i in range(args.numprocess):
-                if i not in oldstate:
-                    oldstate[i] = states[i]
-                    logger.info('add new state process %d: %d', i, oldstate[i])
-                else:
-                    if oldstate[i] == states[i]:
-                        logger.error('PROCESS %d UNCHANGE, NEED RESTART', oldstate[i])
-                        #restart
-#                         processes[i].terminate()
-#                         processes[i].join()
-#                         processes[i] = Process(target=ocrQueue, args=(reader, i, states))
-#                         processes[i].start()
-                    else:
-                        logger.info('state of process %d changed: %d -> %d', i, oldstate[i], states[i])
+                reader = PagePredictor(server, logger)
+                states[i] = 0
+                p = Process(target=ocrQueue, args=(reader, i, states))
+                processes.append(p)
+                process_args.append((reader, i, states))
+                logger.info('new process %d with args ...', i)
+            
+        def startAll():
+            states['server_started'] = False
+            serverprocess.start()
+            while not states['server_started']:
+                sleep(1)
+            for i in range(args.numprocess):
+                processes[i].start()
+        
+        def killAll():
+            for i in range(args.numprocess):
+                processes[i].terminate()
+            serverprocess.terminate()
+            for i in range(args.numprocess):
+                processes[i].join()
+                logger.info('process %d finished', i)
+            serverprocess.join()
+            logger.info('server finished')
+        
+        initAll()
+        startAll()
+        
+        try:
+    
+            oldstate = {}
+            tempstate = {}
+            while True:
+                adding = False
+                for i in range(args.numprocess):
+                    if i not in oldstate:
                         oldstate[i] = states[i]
-            sleep(10*args.time_per_receipt)
-
-    except KeyboardInterrupt:
-        logger.info('Caught KeyboardInterrupt, terminating...')
-        for i in range(args.numprocess):
-            processes[i].terminate()
-        serverprocess.terminate()
-        for i in range(args.numprocess):
-            processes[i].join()
-            logger.info('process %d finished', i)
-        serverprocess.join()
-        logger.info('server finished')
-
-    else:
-        logger.info('Quitting normally')
-        for i in range(args.numprocess):
-            p[i].join() 
-        serverprocess.join()           
-
-
-# if __name__ == "__main__":
-#     pp = PagePredictor('localhost:9000')
-#     with open('/tmp/temp_hope/rs.txt', 'w') as rs:
-#         for filename in os.listdir('/home/loitg/Downloads/complex-bg/'):        
-#             if filename[-3:].upper() == 'JPG':
-#                 
-#                 tt = time.time()
-#                 ret = pp.ocrImage('/home/loitg/Downloads/complex-bg/' + filename)
-#                 rs.write(filename + '----------------' + str(time.time() - tt) + '\n')
-#                 rs.write(ret+ '\n')
-#                 rs.flush()
-
-#     manager = Manager()
-#     states = manager.dict()
-#     server = LocalServer(args.model_path, manager)
-#     p = Process(target=runserver, args=(server, states))
-# 
-#     readers = [PagePredictor(server) for i in range(args.numprocess)]
-#     
-#     states['server_started'] = False
-#     p.start()
-#     while not states['server_started']:
-#         sleep(1)   
-#     pool = Pool(processes=args.numprocess)
-#     pool.map(readReceipt, zip(readers, range(args.numprocess)))
-# 
-#     p.join()   
+                        logger.info('add new state process %d: %d', i, oldstate[i])
+                        adding = True
+                    else:
+                        tempstate[i] = states[i] - oldstate[i]
+                        oldstate[i] = states[i]
+                if not adding: 
+                    if all([x==0 for x in tempstate.itervalues()]):
+                        logger.error('ALL PROCESS UNCHANGE, RESTART SERVER AND ALL.')
+                        killAll()
+                        initAll()
+                        startAll()
+                    else:
+                        for i in range(args.numprocess):
+                            if tempstate[i] == 0:
+                                logger.error('PROCESS %d UNCHANGE, NEED RESTART', i)
+                                processes[i].terminate()
+                                processes[i].join()
+                                processes[i] = Process(target=ocrQueue, args=process_args[i])
+                                processes[i].start()   
+                            else:
+                                logger.info('state of process %d changed: %d -> %d', i, oldstate[i]-tempstate[i], oldstate[i])                 
+                sleep(args.heartbeat_check)
+    
+        except KeyboardInterrupt:
+            logger.info('Caught KeyboardInterrupt, terminating...')
+            killAll()
+    
+        else:
+            logger.info('Quitting normally')
+            for i in range(args.numprocess):
+                p[i].join() 
+            serverprocess.join()           
+        

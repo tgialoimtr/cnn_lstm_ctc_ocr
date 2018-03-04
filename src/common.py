@@ -1,7 +1,5 @@
 '''
-Created on Feb 21, 2018
-
-@author: loitg
+Common arguments and parameters
 '''
 class DFO(object):
     pass
@@ -9,7 +7,7 @@ class DFO(object):
 args = DFO()
 args.model_path = '/home/loitg/debugtf/model_version4_total/'
 args.imgsdir = '/home/loitg/Downloads/complex-bg/'
-args.numprocess = 1
+args.numprocess = 2
 args.qget_wait_count = 200
 args.qget_wait_interval = 0.5
 args.bucket_size = 1
@@ -24,7 +22,5 @@ args.queue_get_name = 'loitg-queue-get'
 args.queue_push_name = 'loitg-queue-push'
 args.container_name = 'loitg-local'
 args.receipt_waiting_interval = 10 #seconds
-args.time_per_receipt = 20
-
-if __name__ == '__main__':
-    pass
+args.heartbeat_check = 60 #second
+args.mode = 'show' # delete, upload, process

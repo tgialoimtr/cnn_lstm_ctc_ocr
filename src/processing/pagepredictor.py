@@ -12,6 +12,7 @@ from ocrolib import lstm, normalize_text
 from ocrolib import psegutils,morph,sl
 from ocrolib.toplevel import *
 import time
+import datetime
 
 import threading
 from linepredictor import BatchLinePredictor
@@ -319,6 +320,7 @@ class PagePredictor:
 #             hihi, sau = calc_line(line)
             if not pre_check_line(line): continue
             newwidth = int(32.0/line.shape[0] * line.shape[1])
+            if newwidth < 32 or newwidth > 1000: continue
             line = cv2.resize(line, (newwidth, 32))
             line = (line*255).astype(np.uint8)
             line_list.append(line)
@@ -334,7 +336,8 @@ class PagePredictor:
 #             cv2.imwrite(directory+'/'+ str(i) + '_' + hihi +'_sau.JPG', sau*255)
 #                
 #         return 'hihi'
-        pred_dict = self.linepredictor.predict_batch(line_list, logger)
+        batchname = datetime.datetime.now().isoformat()
+        pred_dict = self.linepredictor.predict_batch(batchname, line_list, logger)
         logger.debug('%s', str(pred_dict))
         for i in range(len(line_list)):
             result = psegutils.record(bounds = bounds_list[i], text=pred_dict[i], available=True)
