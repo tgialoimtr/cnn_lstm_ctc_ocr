@@ -29,11 +29,12 @@ class ReceiptSerialize(object):
         self.amount = 1.0/3;
         self.currency = u"hhh\u2026hhh";
         self.program = None;
+        self.station = u"";
         self.mobileVersion = "fdfd";
         self.deviceName = None;
         self.receiptBlobName = u"";
         self.receiptCrmName = u"";
-        self.station = u"";
+        self.uploadLocalFolder = u"";
  
 
     @classmethod
@@ -41,18 +42,19 @@ class ReceiptSerialize(object):
         rs = cls()
         try:
             fromjson = json.loads(jsonStr, parse_float=decimal.Decimal)
-        except ValueError:
+            rs.memberNumber = fromjson['memberNumber'];
+            rs.token = fromjson['token'];
+            rs.amount = fromjson['amount'];
+            rs.currency = fromjson['currency'];
+            rs.program = fromjson['program'];
+            rs.station = fromjson['station'];
+            rs.mobileVersion = fromjson['mobileVersion'];
+            rs.deviceName = fromjson['deviceName'];
+            rs.receiptBlobName = fromjson['receiptBlobName'];
+            rs.receiptCrmName = fromjson['receiptCrmName'];
+            rs.uploadLocalFolder = fromjson['uploadLocalFolder'];
+        except Exception:
             return None
-        rs.memberNumber = fromjson['memberNumber'];
-        rs.token = fromjson['token'];
-        rs.amount = fromjson['amount'];
-        rs.currency = fromjson['currency'];
-        rs.program = fromjson['program'];
-        rs.mobileVersion = fromjson['mobileVersion'];
-        rs.deviceName = fromjson['deviceName'];
-        rs.receiptBlobName = fromjson['receiptBlobName'];
-        rs.receiptCrmName = fromjson['receiptCrmName'];
-        rs.station = fromjson['station'];
         return rs
     
     def toString(self):
