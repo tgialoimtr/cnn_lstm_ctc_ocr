@@ -14,6 +14,7 @@ from common import args
 from subprocess import *
 import random
 from common import args
+from inputoutput.receipt import ExtractedData
 
 class LocodeExtractor(object):
     def __init__(self, csvdb, jarfile):
@@ -28,14 +29,9 @@ class LocodeExtractor(object):
             if line != '' and line.endswith('\n'):
                 ret.append(line[:-1])
         stdout, stderr = process.communicate()
-        print(stdout)
         ret += stdout.split('\n')
-        if stderr != '':
-            print(stderr)
-            ret += stderr.split('\n')
         ret.remove('')
-        print(ret)
-        ret = ret[2]
+        ret = ret[0]
         if ret == 'None': ret = ''
         return ret
 
@@ -362,18 +358,28 @@ class CLExtractor(object):
         self.id_extr = ReceiptIdExtractor()
         self.locode_extr = LocodeExtractor(args.dbfile, args.locationnjar)
     
-    def extract(self, lines, kwvalues=None):
-        print(type(lines[0]))
-        locode0 = self.locode_extr.extract(lines) 
+    def extract(self, lines, kwvalues=None):        
         self.kwt.detect(lines)
-        datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
+        datetime0 = self.date_extr.extract(lines[:], self.kwt.kwExtractor.values)
         if datetime0 is not None:
             datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
         else:
             datetime0=''
-        total0 = self.total_extr.extract(lines, self.kwt.kwExtractor.values)
-        rid0 = self.id_extr.extract(lines, self.kwt.kwExtractor.values)
-        return (rid0, locode0, total0, datetime0)
+        self.kwt.detect(lines)
+        total0 = self.total_extr.extract(lines[:], self.kwt.kwExtractor.values)
+        self.kwt.detect(lines)
+        rid0 = self.id_extr.extract(lines[:], self.kwt.kwExtractor.values)
+        locode0 = self.locode_extr.extract(lines)
+        locs = locode0.split('=,=')
+        if len(locs) < 5:
+            extdata = ExtractedData(mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, 
+                                    totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status='INVALID')
+        else:
+            status = 'SUCCESS' if (total0 > 0.0 and datetime0 != '') else 'INVALID'
+            extdata = ExtractedData(mallName=locs[1], storeName=locs[2], locationCode=locs[0], zipcode=locs[4], gstNo=locs[3], 
+                                    totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status=status)
+        
+        return extdata
             
 if __name__ == '__main__':
     allrs = {}

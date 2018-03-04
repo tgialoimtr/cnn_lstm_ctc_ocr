@@ -65,12 +65,10 @@ def ocrQueue(reader, num, states):
                             logger.info('process %d has %d lines.',num, len(lines))
                             for line in lines:
                                 logger.debug(line)
-                            rid, locode, total, dt = extractor.extract(lines)
+                            extdata = extractor.extract(lines)
                         except Exception:
                             logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
                             extdata = ExtractedData()
-                        if extdata is None:
-                            extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
                         outmsg = rinfo.combineExtractedData(extdata)
                         logger.info('%d, %s', states[num], outmsg)
                         service.pushMessage(outmsg, logger=logger)
@@ -92,17 +90,16 @@ def ocrQueue(reader, num, states):
 
 if __name__ == "__main__":
     logger = createLogger('main')
-    
+    service = createAzureService(logger)
+    if service is None:
+        exit(1)
     if args.mode == 'delete':
-        service = createAzureService(logger)
         service.cleanUp()
         exit(0)
     elif args.mode == 'upload':
-        service = createAzureService(logger)
         service.uploadFolder(args.imgsdir, logger)
         exit(0)
     elif args.mode == 'show':
-        service = createAzureService(logger)
         logger.info('azure info: %s', str(service.count()))
         exit(0)
     elif args.mode == 'process':
