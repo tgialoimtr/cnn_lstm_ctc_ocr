@@ -17,8 +17,8 @@ from common import args
 
 class LocodeExtractor(object):
     def __init__(self, csvdb, jarfile):
-        self.csvdb = args.javapath + csvdb
-        self.jarfile = args.javapath + jarfile
+        self.csvdb = os.path.join(args.javapath, csvdb)
+        self.jarfile = os.path.join(args.javapath, jarfile)
 
     def jarWrapper(self, txtfilepath):
         process = Popen(['java', '-jar', self.jarfile, self.csvdb, txtfilepath], stdout=PIPE, stderr=PIPE)
@@ -28,23 +28,27 @@ class LocodeExtractor(object):
             if line != '' and line.endswith('\n'):
                 ret.append(line[:-1])
         stdout, stderr = process.communicate()
+        print(stdout)
         ret += stdout.split('\n')
         if stderr != '':
+            print(stderr)
             ret += stderr.split('\n')
         ret.remove('')
+        print(ret)
         ret = ret[2]
         if ret == 'None': ret = ''
         return ret
 
     def extract(self, lines, kwvalues=None):
         tempfilename = str(random.randint(1,9999999)) + '.txt'
-        with open(args.javapath + tempfilename, 'w') as tempfile:
+        tempfilename = os.path.join(args.javapath, tempfilename)
+        with open(tempfilename, 'w') as tempfile:
             for line in lines:
                 tempfile.write(line)
         
-        rs = self.jarWrapper(args.javapath + tempfilename)
+        rs = self.jarWrapper(tempfilename)
         #delete
-        os.remove(args.javapath + tempfilename)
+        os.remove(tempfilename)
         return rs
 
 

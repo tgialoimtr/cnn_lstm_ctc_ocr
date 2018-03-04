@@ -5,12 +5,13 @@ from time import sleep
 from multiprocessing import Process, Manager, Pool
 import logging
 from logging.handlers import TimedRotatingFileHandler
+from azure.common import AzureException, AzureMissingResourceHttpError
 
 from processing.pagepredictor import PagePredictor
 from processing.server import LocalServer
 from extract_fields.extract import CLExtractor
 from inputoutput.receipt import ExtractedData, ReceiptSerialize
-from inputoutout.azureservice import AzureService
+from inputoutput.azureservice import AzureService
 from common import args
 
 def createLogger(name):
@@ -47,35 +48,11 @@ def ocrQueue(reader, num, states):
     logger = createLogger('worker-' + str(num))
     logger.info('process %d start pushing image.', num)
     extractor = CLExtractor()
-    try:
-        service = AzureService(connection_string=args.connection_string,
-                               container_name='loitg-local',
-                               queue_get='loitg-queue-get',
-                               queue_push='loitg-queue-push',
-                               )
-    except AzureException as e:
-        logger.error('Connection Error: Maybe wrong credential.')
-
-    while True:
-        extdata = None
-        try:
-            lines = reader.ocrImage('/home/loitg/Downloads/complex-bg/22.JPG', logger)
-            logger.info('process %d has %d lines.',num, len(lines))
-            for line in lines:
-                logger.debug(line)
-            rid, locode, total, dt = extractor.extract(lines)
-        except Exception:
-            logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
-            extdata = ExtractedData()
-        if extdata is None:
-            extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
-            states[num] += 1
-        meta = ReceiptSerialize()
-        outmsg = str(meta.combineExtractedData(extdata))
-        logger.info('%d, %s', states[num], outmsg)
+    service = createAzureService(logger)
             
     while True:  
         m, rinfo = service.getReceiptInfo(logger=logger)
+        states[num] += 1
         if m is not None: # got message
             if rinfo is not None: # parse success
                 logger.info('message after parsed: %s', rinfo.toString())
@@ -94,7 +71,6 @@ def ocrQueue(reader, num, states):
                             extdata = ExtractedData()
                         if extdata is None:
                             extdata = ExtractedData(locationCode = locode, receiptId=rid, totalNumber=total, receiptDateTime=dt, status='SUCCESS')
-                            states[num] += 1
                         outmsg = rinfo.combineExtractedData(extdata)
                         logger.info('%d, %s', states[num], outmsg)
                         service.pushMessage(outmsg, logger=logger)
@@ -116,14 +92,17 @@ def ocrQueue(reader, num, states):
 
 if __name__ == "__main__":
     logger = createLogger('main')
-    service = createAzureService(logger)
+    
     if args.mode == 'delete':
+        service = createAzureService(logger)
         service.cleanUp()
         exit(0)
     elif args.mode == 'upload':
+        service = createAzureService(logger)
         service.uploadFolder(args.imgsdir, logger)
         exit(0)
     elif args.mode == 'show':
+        service = createAzureService(logger)
         logger.info('azure info: %s', str(service.count()))
         exit(0)
     elif args.mode == 'process':

@@ -118,7 +118,7 @@ class AzureService(object):
             return None
         return localpath
     
-    def deleteMessage(self, message, qname=None): 
+    def deleteMessage(self, message, qname=None, logger=None): 
         if qname is None:
             qname = self.getname
         try:
@@ -130,7 +130,7 @@ class AzureService(object):
                 print 'ERROR DELETE MESSAGE '
                 print e
                 
-    def deleteImage(self, imgname):
+    def deleteImage(self, imgname, logger=None):
         try: 
             self.bs.delete_blob(self.ctnname, imgname)
         except Exception as e:
