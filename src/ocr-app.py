@@ -74,6 +74,7 @@ def ocrQueue(reader, num, states):
                         service.pushMessage(outmsg, logger=logger)
                         service.deleteMessage(m, logger=logger)
                         service.deleteImage(rinfo.receiptBlobName, logger=logger)
+                        os.remove(lp)
                     else: # invalid string '' means blob not exist, so should delete
                         logger.error('Blob doesnot exist, will delete message %s', m.content)
                         service.deleteMessage(m, logger=logger)

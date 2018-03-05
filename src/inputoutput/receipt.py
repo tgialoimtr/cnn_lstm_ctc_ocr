@@ -17,7 +17,9 @@ class ExtractedData(object):
         self.totalNumber = totalNumber
         self.receiptId = receiptId
         self.receiptDateTime = receiptDateTime
-        self.status = status    
+        self.status = status
+        self.qualityCode = 0
+        self.message = 'Receipt OK'
         
 class ReceiptSerialize(object):
     '''
@@ -26,16 +28,16 @@ class ReceiptSerialize(object):
     
     def __init__(self):
         self.memberNumber = None;
-        self.token = u"";
-        self.amount = 1.0/3;
-        self.currency = u"hhh\u2026hhh";
+        self.token = None;
+        self.amount = 0.0;
+        self.currency = None;
         self.program = None;
-        self.station = u"";
-        self.mobileVersion = "fdfd";
+        self.station = None;
+        self.mobileVersion = None;
         self.deviceName = None;
-        self.receiptBlobName = u"";
-        self.receiptCrmName = u"";
-        self.uploadLocalFolder = u"";
+        self.receiptBlobName = None;
+        self.receiptCrmName = None;
+        self.uploadLocalFolder = None;
  
 
     @classmethod
