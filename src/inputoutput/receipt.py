@@ -5,6 +5,7 @@ Created on Feb 27, 2018
 '''
 import decimal
 import simplejson as json
+from base64 import b64decode
 
 class ExtractedData(object):
     def __init__(self, mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, totalNumber=0.0, receiptId=None, receiptDateTime=None, status='FAIL'):
@@ -41,7 +42,10 @@ class ReceiptSerialize(object):
     def fromjson(cls, jsonStr):
         rs = cls()
         try:
-            fromjson = json.loads(jsonStr, parse_float=decimal.Decimal)
+            try:
+                fromjson = json.loads(jsonStr, parse_float=decimal.Decimal)
+            except Exception:
+                fromjson = json.loads(b64decode(jsonStr), parse_float=decimal.Decimal)
             rs.memberNumber = fromjson['memberNumber'];
             rs.token = fromjson['token'];
             rs.amount = fromjson['amount'];
