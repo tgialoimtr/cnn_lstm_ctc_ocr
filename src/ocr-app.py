@@ -18,7 +18,7 @@ def createLogger(name):
     logFormatter = logging.Formatter("%(asctime)s [%(name)-12.12s] [%(levelname)-5.5s]  %(message)s")
     rootLogger = logging.getLogger(name)
     
-    fileHandler = TimedRotatingFileHandler(os.path.join(args.javapath, 'log.' + name) , when='midnight', backupCount=10)
+    fileHandler = TimedRotatingFileHandler(os.path.join(args.logsdir, 'log.' + name) , when='midnight', backupCount=10)
     fileHandler.setFormatter(logFormatter)
     rootLogger.addHandler(fileHandler)
     
