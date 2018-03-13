@@ -52,7 +52,6 @@ def ocrQueue(reader, num, states):
             
     while True:  
         m, rinfo = service.getReceiptInfo(logger=logger)
-        states[num] += 1
         if m is not None: # got message
             if rinfo is not None: # parse success
                 logger.info('message after parsed: %s', rinfo.toString())
@@ -66,26 +65,34 @@ def ocrQueue(reader, num, states):
                             for line in lines:
                                 logger.debug(line)
                             extdata = extractor.extract(lines)
+                            states[num] += 1
                         except Exception:
                             logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
                             extdata = ExtractedData()
-                        outmsg = rinfo.combineExtractedData(extdata)
-                        logger.info('%d, %s', states[num], outmsg)
-                        service.pushMessage(outmsg, logger=logger)
-                        service.deleteMessage(m, logger=logger)
-                        service.deleteImage(rinfo.receiptBlobName, logger=logger)
-                        os.remove(lp)
+                        try:
+                            outmsg = rinfo.combineExtractedData(extdata)
+                            logger.info('%d, %s', states[num], outmsg)
+                            service.pushMessage(outmsg, logger=logger)
+                            service.deleteMessage(m, logger=logger)
+                            service.deleteImage(rinfo.receiptBlobName, logger=logger)
+                            os.remove(lp)
+                        except Exception:
+                            logger.exception('Error when push message or cleanup.')
                     else: # invalid string '' means blob not exist, so should delete
                         logger.error('Blob doesnot exist, will delete message %s', m.content)
                         service.deleteMessage(m, logger=logger)
+                        states[num] += 1
                 else: #exception, wait til next message
                     sleep(args.receipt_waiting_interval)
+                    states[num] += 1
             else: # fail parse json
                 # delete message
                 logger.error('Bad message format, will delete message %s', m.content)
                 service.deleteMessage(m, logger=logger)
+                states[num] += 1
         else: # no message available
             sleep(args.receipt_waiting_interval)
+            states[num] += 1
 
 
 

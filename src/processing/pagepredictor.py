@@ -336,6 +336,7 @@ class PagePredictor:
 #             cv2.imwrite(directory+'/'+ str(i) + '_' + hihi +'_sau.JPG', sau*255)
 #                
 #         return 'hihi'
+        if len(line_list) == 0: raise ValueError('Image contains no contents.')
         batchname = datetime.datetime.now().isoformat()
         pred_dict = self.linepredictor.predict_batch(batchname, line_list, logger)
         logger.debug('%s', str(pred_dict))

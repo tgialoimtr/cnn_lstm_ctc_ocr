@@ -104,14 +104,14 @@ class AzureService(object):
             self.bs.get_blob_to_path(self.ctnname, imgname, localpath)
         except AzureMissingResourceHttpError as e:
             if logger:
-                logger.error('Blob named ' + imgname + ' doesnot exist.' , exec_info=True)
+                logger.error('Blob named ' + imgname + ' doesnot exist.' , exc_info=True)
             else:
                 print 'Blob named ' + imgname + ' doesnot exist.' 
                 print e            
             return ''
         except Exception as e:
             if logger:
-                logger.error('Exception while getting blob.', exec_info=True)
+                logger.error('Exception while getting blob.', exc_info=True)
             else:
                 print 'Exception while getting blob.' 
                 print e            
