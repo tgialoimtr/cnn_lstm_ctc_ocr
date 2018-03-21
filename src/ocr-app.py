@@ -47,10 +47,10 @@ def runserver(server, states):
 def ocrLocalPath(reader, num, states):
     logger = createLogger('localworker-' + str(num))
     logger.info('process %d start pushing image.', num)
-    for fn in os.listdir(imgsdir):
+    for filename in os.listdir(args.imgsdir):
         if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
-            lines = reader.ocrImage(lp, logger)
-            with open(args.textsdir + fn + '.txt') as outfile:
+            lines = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+            with open(args.textsdir + filename + '.txt', 'w') as outfile:
                 for line in lines:
                     outfile.write(line + '\n')
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         if args.mode == 'process-local':
             ocrFunction = ocrLocalPath
         def initAll():
-            global server, serverprocess, processes, process_args
+            global server, serverprocess, processes, process_args, ocrFunction
             server = LocalServer(args.model_path, manager)
             serverprocess = Process(target=runserver, args=(server, states)) 
             processes = []
