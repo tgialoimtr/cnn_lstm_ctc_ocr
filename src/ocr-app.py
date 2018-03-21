@@ -43,6 +43,17 @@ def createAzureService(logger):
 def runserver(server, states):
     logger = createLogger('server')
     server.run(states, logger)
+
+def ocrLocalPath(reader, num, states):
+    logger = createLogger('localworker-' + str(num))
+    logger.info('process %d start pushing image.', num)
+    for fn in os.listdir(imgsdir):
+        if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
+            lines = reader.ocrImage(lp, logger)
+            with open(args.textsdir + fn + '.txt') as outfile:
+                for line in lines:
+                    outfile.write(line + '\n')
+
     
 def ocrQueue(reader, num, states):
     logger = createLogger('worker-' + str(num))
@@ -110,14 +121,17 @@ if __name__ == "__main__":
     elif args.mode == 'show':
         logger.info('azure info: %s', str(service.count()))
         exit(0)
-    elif args.mode == 'process':
+    elif args.mode == 'process' or args.mode == 'process-local':
         manager = Manager()
         states = manager.dict()
         server = None
         serverprocess = None
         processes = []
         process_args = []
-        
+        if args.mode == 'process':
+            ocrFunction = ocrQueue
+        if args.mode == 'process-local':
+            ocrFunction = ocrLocalPath
         def initAll():
             global server, serverprocess, processes, process_args
             server = LocalServer(args.model_path, manager)
@@ -127,7 +141,7 @@ if __name__ == "__main__":
             for i in range(args.numprocess):
                 reader = PagePredictor(server, logger)
                 states[i] = 0
-                p = Process(target=ocrQueue, args=(reader, i, states))
+                p = Process(target=ocrFunction, args=(reader, i, states))
                 processes.append(p)
                 process_args.append((reader, i, states))
                 logger.info('new process %d with args ...', i)
@@ -179,7 +193,7 @@ if __name__ == "__main__":
                                 logger.error('PROCESS %d UNCHANGE, NEED RESTART', i)
                                 processes[i].terminate()
                                 processes[i].join()
-                                processes[i] = Process(target=ocrQueue, args=process_args[i])
+                                processes[i] = Process(target=ocrFunction, args=process_args[i])
                                 processes[i].start()   
                             else:
                                 logger.info('state of process %d changed: %d -> %d', i, oldstate[i]-tempstate[i], oldstate[i])                 

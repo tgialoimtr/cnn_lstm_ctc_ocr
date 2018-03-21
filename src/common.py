@@ -7,6 +7,7 @@ class DFO(object):
 args = DFO()
 args.model_path = '/home/loitg/location_nn/tfmodel/'
 args.imgsdir = ''
+args.textsdir = '/tmp/textresult/'
 args.numprocess = 2 #CPU:2 #GPU:8
 args.qget_wait_count = 400
 args.qget_wait_interval = 0.5
@@ -24,4 +25,4 @@ args.queue_push_name = 'receipt-info-queue-hangtest'
 args.container_name = 'mobile-receipts-dev-hangtest'
 args.receipt_waiting_interval = 10
 args.heartbeat_check = 300
-args.mode = 'process'
+args.mode = 'process-local'
