@@ -50,6 +50,7 @@ def ocrLocalPath(reader, num, states):
     for filename in os.listdir(args.imgsdir):
         if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
             lines = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+            states[num] += 1
             with open(args.textsdir + filename + '.txt', 'w') as outfile:
                 for line in lines:
                     outfile.write(line + '\n')
