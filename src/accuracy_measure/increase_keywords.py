@@ -14,6 +14,7 @@ from multiprocessing import Process, Manager, Pool
 from extract_fields.extract import CLExtractor
 
 
+
 def createLogger(name):
     logFormatter = logging.Formatter("%(asctime)s [%(name)-12.12s] [%(levelname)-5.5s]  %(message)s")
     rootLogger = logging.getLogger(name)
