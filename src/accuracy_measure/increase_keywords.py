@@ -10,7 +10,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from common import args
 from multiprocessing import Process, Manager, Pool
-
+import json
 from extract_fields.extract import CLExtractor
 
 
@@ -42,11 +42,44 @@ def show(imgpath):
 
 s = '=-=++-='
  
- 
+class LC(object):
+    def __init__(self, line):
+        self.storekw = None
+        self.mallkw = None
+    
+    def toLine(self):
+        return ','.join([self.storekw])
+
+def suggestLC(topx00path, infopath,lines):
+    #find in topx00 first#
+    
+    #then trung_kws
+    
+    return []
+
+def appendToTop(topx00path, newlc):
+    pass
+
 if __name__ == '__main__':
     logger = createLogger('main')
-    largedata = '/home/loitg/Downloads/complex-bg/'
-    textspath = '/tmp/textresult/'
+    largedata = '/tmp/textresult/13kreceipts/'
+    textspath = '/tmp/textresult/texts/'
+    infopath = '/tmp/textresult/database.json'
+#     try:
+    info = json.load(open(infopath,'r'))
+#     except json.JSONDecodeError as err:
+#         # grab a reasonable section, say 40 characters.
+#         start, stop = max(0, err.pos - 20), err.pos + 20
+#         snippet = err.doc[start, stop]
+#         if err.pos < 20:
+#             snippet = '... ' + snippet
+#         if err.pos + 20 < len(err.doc):
+#             snippet += ' ...'
+#         print(err)
+#         print(snippet)
+    print(type(info))
+    print(info[0])
+    topx00path = os.path.join(args.java, args.locationnnjar)
     currentfile = None #'1501685782273_b5e7312d-fabc-4203-bf1e-6ae4f468d6f1.JPG'
     extractor = CLExtractor()
         
@@ -64,13 +97,40 @@ if __name__ == '__main__':
         if len(locs) == 5:
             print(str(locs))
         else: #unable to find
+            suggestions = suggestLC(topx00path, lines)
             #display suggestion
-            pass
+            for i, lc in enumerate(suggestions):
+                print('%d: %s', i, lc.toLine())
             #display image
             fn = fn[:-4]  
             show(os.path.join(largedata, fn))
-    
-    
+            #
+            lcid = raw_input('locationcode id: ')
+            if lcid == 'n': continue
+            try:
+                lcide = int(lcid)
+                
+            except Exception:
+                while True:
+                    kws = raw_input('find locationcode by: ')
+                    if kws == 'n': break
+                    kws = kws.split(',')
+                    suggestions = suggestLC(topx00path, lines)
+                    for i, lc in enumerate(suggestions):
+                        print('%d: %s', i, lc.toLine())
+                    lcid = raw_input('locationcode id: ')
+                    if lcid == 'n': break
+                    try:
+                        lcide = int(lcid) 
+                    except Exception:
+                        pass
+            if lcid == 'n': continue
+            newlc = suggestions[i]
+            #input new gst, zipcode, store mall for lcid
+            pass
+            appendToTop(topx00path, newlc)
+            
+            
     
            
 # if __name__ == '__main__':
