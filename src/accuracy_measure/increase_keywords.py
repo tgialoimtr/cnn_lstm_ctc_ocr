@@ -13,6 +13,8 @@ from multiprocessing import Process, Manager, Pool
 import json
 from extract_fields.extract import CLExtractor
 from column import Store, Column
+import numpy as np
+import pandas as pd
 
 
 def createLogger(name):
@@ -55,29 +57,55 @@ def createColumns(infopath):
         storeCol.initAddRow(store)
     print(str(len(data)) + '----' + str(len(storeCol.values.keys())))  
     return storeCol, mallCol
-        
-def suggestLC(storecol, mallcol, lines):
+
+def createColumnsCsv(infopath):
+    temp = pd.read_csv(infopath, dtype={'zipcode':np.str})
+    temp.fillna('', inplace=True)
+    temp = temp.to_dict('records')
+    data = []
+    for s in temp:
+        data.append(Store(s))
+    mallCol = Column(Store.MALL_NAME, 2.0, 8.0)
+    storeCol = Column(Store.STORE_NAME, 2.0, 8.0)
+    for store in data:
+        mallCol.initAddRow(store)
+        storeCol.initAddRow(store)
+    print(str(len(data)) + '----' + str(len(storeCol.values.keys())))  
+    return storeCol, mallCol
+     
+def suggestLC(storecol, lines):
     {u'storeName': u'AE BY SPORTSLINK AND 12TH MAN', u'mallName': u'BEDOK', u'zipcode': 467360, u'gstNoPattern': u'199400069M', u'receiptIdPattern': u'INVOICE:|NULL|NULL', u'receiptIdLastToken': u':', u'locationCode': u'L24066090381'}
     rs_store = storecol.search0(lines)
-    rs_mall = mallcol.search0(lines)
-    print('store: ' + str(len(rs_store)))
-    print('mall: ' + str(len(rs_mall)))
-    return []
+#     for store, val in rs_store:
+#         print('' %()) str(val) + '--' + store.storedict['mallName'] + '--' + store.storedict['storeName'])
+    rs_store = sorted(rs_store, key=lambda x:(x[1], x[0].storeKeyword, x[0].mallKeyword))
+    return [x[0] for x in rs_store]
 
-def updateTopX00():
-    pass
+def locodeExist(topx00path, locode):
+    for line in open(topx00path, 'r'):
+        lc = line.rstrip().split(',')[1]
+        if lc==locode:
+            print(locode + ' exists in csv')
+            return True
+    print(locode + ' doesnot exist in csv')
+    return False
+
+
+def appendToTop(topx00path, newlc):
+    with open(topx00path, 'a') as of:
+        of.write(',' + newlc.locationCode + ',,'  + newlc.mallKeyword + ','  + newlc.storeKeyword + ','  + newlc.zipcode + ','  + newlc.gst + '\n' )
 
 if __name__ == '__main__':
     logger = createLogger('main')
-    largedata = '/tmp/textresult/13kreceipts/'
-    textspath = '/tmp/textresult/texts/'
-    infopath = '/tmp/textresult/database.json'
+    largedata = '/tmp/textresult2/13kreceipts/'
+    textspath = '/tmp/textresult2/texts/'
+    infopath = '/tmp/textresult2/trung_kw_3.csv'
 
-    storecol, mallcol = createColumns(infopath)
+    storecol, _ = createColumnsCsv(infopath)
     
     
     topx00path = os.path.join(args.javapath, args.dbfile)
-    currentfile = None #'1501685782273_b5e7312d-fabc-4203-bf1e-6ae4f468d6f1.JPG'
+    currentfile = '1507725283688_14f1c81c-7624-4e55-98a1-1c0e389478b8.JPG.txt'
     extractor = CLExtractor()
         
     # loop through folder to find locationcode from currentfile
@@ -94,40 +122,39 @@ if __name__ == '__main__':
         if len(locs) == 5:
             print(str(locs))
         else: #unable to find
-            suggestions = suggestLC(storecol, mallcol, lines[:])
-            #display suggestion
-            for i, lc in enumerate(suggestions):
-                print('%d: %s', i, lc.toLine())
-                
-                
-#             #display image
-#             fn = fn[:-4]  
-#             show(os.path.join(largedata, fn))
-#             #
-#             lcid = raw_input('locationcode id: ')
-#             if lcid == 'n': continue
-#             try:
-#                 lcide = int(lcid)
-#                 
-#             except Exception:
-#                 while True:
-#                     kws = raw_input('find locationcode by: ')
-#                     if kws == 'n': break
-#                     kws = kws.split(',')
-#                     suggestions = suggestLC(topx00path, lines)
-#                     for i, lc in enumerate(suggestions):
-#                         print('%d: %s', i, lc.toLine())
-#                     lcid = raw_input('locationcode id: ')
-#                     if lcid == 'n': break
-#                     try:
-#                         lcide = int(lcid) 
-#                     except Exception:
-#                         pass
-#             if lcid == 'n': continue
-#             newlc = suggestions[i]
-#             #input new gst, zipcode, store mall for lcid
-#             pass
-#             appendToTop(topx00path, newlc)
+            #display image
+            fn = fn[:-4]  
+            show(os.path.join(largedata, fn))
+            lcid = 'n'
+            while True:
+                kws = raw_input('store name to find locode: ')
+                if kws == 'n': break
+                kws = kws.split(',')
+                suggestions = suggestLC(storecol, kws)
+                if len(suggestions) == 0: continue
+                for i, lc in enumerate(suggestions):
+                    print('%d: %s' % ( i, lc.toString()))
+                lcid = raw_input('locationcode id: ')
+                if lcid == 'n': break
+                try:
+                    lcid = int(lcid)
+                    if lcid >= 0: break
+                except Exception:
+                    pass
+            if lcid == 'n': continue
+            newlc = suggestions[lcid]
+            # find locationcode exist in topx00 or not
+            if not locodeExist(topx00path, newlc.locationCode):
+                #input new gst, zipcode, store mall for lcid
+                newlc.storeKeyword = raw_input('store keyowrds: ')
+                if newlc.storeKeyword == 'n': continue
+                newlc.mallKeyword = raw_input('mall keyowrds: ')
+                if newlc.mallKeyword == 'n': continue
+                newlc.gst = raw_input('gst: ')
+                if newlc.gst == 'n': continue
+                newlc.zipcode = raw_input('zipcode: ')
+                if newlc.zipcode == 'n': continue
+                appendToTop(topx00path, newlc)
             
             
     
