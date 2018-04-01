@@ -45,11 +45,16 @@ def runserver(server, states):
     server.run(states, logger)
 
 def ocrLocalPath(reader, num, states):
-    logger = createLogger('localworker-' + str(num))
+    logger = createLogger('local-' + str(num))
     logger.info('process %d start pushing image.', num)
     for filename in os.listdir(args.imgsdir):
+        states[num] += 1
         if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
-            lines = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+            try:
+                lines = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+            except Exception:
+                logger.exception('EXCEPTION WHILE READING LINES.')
+            if lines is None or len(lines) == 0: continue
             with open(args.textsdir + filename + '.txt', 'w') as outfile:
                 for line in lines:
                     outfile.write(line + '\n')
