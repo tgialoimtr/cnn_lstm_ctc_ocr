@@ -10,7 +10,7 @@ from ocrolib.toplevel import *
 from ocrolib import psegutils,morph,sl
 
 
-def imgquality(lines, bounds):
+def imgquality(lines, bounds, logger):
     rs = 0
     try:      
         bad_resolution = 0

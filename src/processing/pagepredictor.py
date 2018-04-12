@@ -316,7 +316,6 @@ class PagePredictor:
         location_text = []
         line_list = []
         bounds_list = []
-        qualityCode = imgquality(line_list, bounds_list)
         for i,l in enumerate(lines):
             line = extract_line(img_grey,l,pad=args.pad)
 #             hihi, sau = calc_line(line)
@@ -338,6 +337,7 @@ class PagePredictor:
 #             cv2.imwrite(directory+'/'+ str(i) + '_' + hihi +'_sau.JPG', sau*255)
 #                
 #         return 'hihi'
+        qualityCode = imgquality(line_list, bounds_list, logger)
         if len(line_list) == 0: raise ValueError('Image contains no contents.')
         batchname = datetime.datetime.now().isoformat()
         pred_dict = self.linepredictor.predict_batch(batchname, line_list, logger)
