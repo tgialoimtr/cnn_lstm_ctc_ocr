@@ -76,5 +76,6 @@ class ReceiptSerialize(object):
         self.receiptId = extdata.receiptId
         self.receiptDateTime = extdata.receiptDateTime
         self.status = extdata.status
+        self.qualityCode = extdata.qualityCode
         return json.dumps(self.__dict__).decode('utf-8')
         
