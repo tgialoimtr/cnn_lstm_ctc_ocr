@@ -76,11 +76,12 @@ def ocrQueue(reader, num, states):
                     if len(lp) > 0:
                         extdata = None
                         try:
-                            lines = reader.ocrImage(lp, logger)
+                            lines, qualityCode = reader.ocrImage(lp, logger)
                             logger.info('process %d has %d lines.',num, len(lines))
                             for line in lines:
                                 logger.debug(line)
                             extdata = extractor.extract(lines)
+                            extdata.qualityCode = qualityCode
                             states[num] += 1
                         except Exception:
                             logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')

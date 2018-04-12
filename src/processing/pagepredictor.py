@@ -16,6 +16,7 @@ import datetime
 
 import threading
 from linepredictor import BatchLinePredictor
+from imgquality import imgquality
 
        
 class obj:
@@ -315,6 +316,7 @@ class PagePredictor:
         location_text = []
         line_list = []
         bounds_list = []
+        qualityCode = imgquality(line_list, bounds_list)
         for i,l in enumerate(lines):
             line = extract_line(img_grey,l,pad=args.pad)
 #             hihi, sau = calc_line(line)
@@ -381,7 +383,7 @@ class PagePredictor:
             if result.available:
                 lines.append(result.text)
     #             ocrolib.write_text(args.outtext+str(i)+".txt",pred)/home/loitg/Downloads/complex-bg
-        return lines
+        return lines, qualityCode
                     
                     
 if __name__ == "__main__":
