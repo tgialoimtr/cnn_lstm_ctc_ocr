@@ -47,7 +47,8 @@ def runserver(server, states):
 def ocrLocalPath(reader, num, states):
     logger = createLogger('local-' + str(num))
     logger.info('process %d start pushing image.', num)
-    for filename in os.listdir(args.imgsdir):
+    imglist = sorted(os.listdir(args.imgsdir), reverse=False)
+    for filename in imglist:
         states[num] += 1
         if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
             try:
