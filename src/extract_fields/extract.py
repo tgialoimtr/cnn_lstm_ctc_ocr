@@ -363,7 +363,7 @@ class CLExtractor(object):
         self.kwt.detect(lines)
         datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
         if datetime0 is not None:
-            datetime0 = datetime0.strftime('%d-%m-%YT%H:%M:%SZ')
+            datetime0 = datetime0.strftime('%Y-%m-%dT%H:%M:%SZ')
         else:
             datetime0=''
         lines = orilines[:]

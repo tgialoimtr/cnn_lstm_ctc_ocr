@@ -22,7 +22,7 @@ from common import args
 # AccountKey=Z/dhpkNhR7DY0goHVsaPldFCnqzydIN/CunYh324E8M82eqOGeupYFS5CGz7CS18FDm1wWmWPEX3ecxJ23HqmA==
 
 class AzureService(object):
-    VISIBILITY_TIMEOUT = 5
+    VISIBILITY_TIMEOUT = 5*60
 
     def __init__(self, connection_string, container_name, queue_get, queue_push, logger=None):
         self.ctnname = container_name
