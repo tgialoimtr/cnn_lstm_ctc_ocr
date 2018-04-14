@@ -15,7 +15,7 @@ def queuePush2Csv(logfilepath, csvpath):
     pushmsglog = re.compile(rpushmsglog)
     logfile = open(logfilepath, 'r')     
     keys = ["status", "deviceName", "zipcode", "storeName", "receiptBlobName", "station", "mallName", "amount", "mobileVersion", "currency", "token", 
-            "program", "gstNo", "totalNumber", "receiptCrmName", "memberNumber", "receiptDateTime", "receiptId", "locationCode", "uploadLocalFolder"]   
+            "program", "gstNo", "totalNumber", "receiptCrmName", "memberNumber", "receiptDateTime", "receiptId", "locationCode", "uploadLocalFolder", "qualityCode"]   
 
     with open(csvpath, 'w') as output_file:
         dict_writer = csv.DictWriter(output_file, keys)
