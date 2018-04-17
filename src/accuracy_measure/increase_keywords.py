@@ -5,13 +5,14 @@ Created on Feb 12, 2018
 '''
 from __future__ import print_function
 import cv2
-import os
+import os, sys
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from common import args
 from multiprocessing import Process, Manager, Pool
 import json
 from extract_fields.extract import CLExtractor
+from accuracy_measure.settings import Settings
 from column import Store, Column
 import numpy as np
 import pandas as pd
@@ -95,19 +96,73 @@ def appendToTop(topx00path, newlc):
     with open(topx00path, 'a') as of:
         of.write(',' + newlc.locationCode + ',,'  + newlc.mallKeyword + ','  + newlc.storeKeyword + ','  + newlc.zipcode + ','  + newlc.gst + '\n' )
 
-if __name__ == '__main__':
-    logger = createLogger('main')
-    largedata = '/tmp/textresult2/13kreceipts/'
-    textspath = '/tmp/textresult2/texts/'
-    infopath = '/tmp/textresult2/trung_kw_3.csv'
 
-    storecol, _ = createColumnsCsv(infopath)
+logger = createLogger('main')
+largedata = '/home/loitg/Downloads/complex-bg/'
+textspath = '/home/loitg/Downloads/complex-bg/tmp/'
+infopath = '/home/loitg/trung_kw_3.csv'
+CURRENT_FILE = 'current_file'
+storecol, _ = createColumnsCsv(infopath)
+
+settings = Settings()
+settings.load()
+topx00path = os.path.join(args.javapath, args.dbfile)
+currentfile = settings.load(CURRENT_FILE, None)
+extractor = CLExtractor()
     
-    
-    topx00path = os.path.join(args.javapath, args.dbfile)
-    currentfile = '1507725283688_14f1c81c-7624-4e55-98a1-1c0e389478b8.JPG.txt'
-    extractor = CLExtractor()
+def nextImage(fn, show=False):
+    lines = list(open(os.path.join(textspath, fn), 'r'))
+    locode0 = extractor.locode_extr.extract(lines[:])
+    locs = locode0.split('=,=')
+    if len(locs) == 5:# SKIP
+        print(str(locs))
         
+    else: #unable to find
+        #display image
+        fn = fn[:-4]  
+        show(os.path.join(largedata, fn))
+        lcid = 'n'
+    
+
+
+if __name__ == '__main__':
+    
+    textfiles = sorted(os.listdir(textspath))
+    currentfile_index = textfiles.index(currentfile) if currentfile else 0
+        
+    try:
+        #new loop
+        while True:
+            k = raw_input('A,D,shift-A,shift-D,Space: ')
+            if k == 'a':
+                pass
+            elif k == 'd':
+                pass
+            elif k == 'A':
+                pass
+            elif k == 'D':
+                pass
+            elif k == ' ':
+                pass
+
+    
+    except KeyboardInterrupt:
+        settings[CURRENT_FILE] = 0
+        settings.save()
+        sys.exit(0)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     # loop through folder to find locationcode from currentfile
     for fn in os.listdir(textspath):
         if currentfile is not None:
@@ -119,7 +174,7 @@ if __name__ == '__main__':
         lines = list(open(os.path.join(textspath, fn), 'r'))
         locode0 = extractor.locode_extr.extract(lines[:])
         locs = locode0.split('=,=')
-        if len(locs) == 5:
+        if len(locs) == 5:# SKIP
             print(str(locs))
         else: #unable to find
             #display image
@@ -156,7 +211,11 @@ if __name__ == '__main__':
                 if newlc.zipcode == 'n': continue
                 appendToTop(topx00path, newlc)
             
-            
+#a d:normal
+#A D:skip known  # also SKIP unkown usually repeated.
+##: integrate 5000 _ 200; handel 10%
+##: input ground truth (only location ?) while build kw, also mechanism for fast automactically test.
+##: math CRM(later),        
     
            
 # if __name__ == '__main__':

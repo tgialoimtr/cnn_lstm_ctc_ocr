@@ -5,7 +5,7 @@ Created on Feb 27, 2018
 '''
 import decimal
 import simplejson as json
-from base64 import b64decode, b64encode
+from base64 import b64decode
 
 class ExtractedData(object):
     def __init__(self, mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, totalNumber=0.0, receiptId=None, receiptDateTime=None, status='FAIL'):
@@ -64,7 +64,8 @@ class ReceiptSerialize(object):
         return rs
     
     def toString(self):
-        return b64encode(json.dumps(self.__dict__).decode('utf-8')).decode('utf-8')
+        return json.dumps(self.__dict__).decode('utf-8')
+#         return b64encode(json.dumps(self.__dict__).decode('utf-8')).decode('utf-8')
     
     def combineExtractedData(self, extdata):
         self.mallName = extdata.mallName
@@ -77,5 +78,5 @@ class ReceiptSerialize(object):
         self.receiptDateTime = extdata.receiptDateTime
         self.status = extdata.status
         self.qualityCode = extdata.qualityCode
-        return b64encode(json.dumps(self.__dict__).decode('utf-8')).decode('utf-8')
+        return self.toString()
         

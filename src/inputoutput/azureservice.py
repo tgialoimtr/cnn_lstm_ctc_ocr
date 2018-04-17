@@ -12,6 +12,7 @@ import logging
 from azure.common import AzureException, AzureMissingResourceHttpError
 from time import sleep
 from common import args
+from base64 import b64encode
 
 # DefaultEndpointsProtocol=https;
 # AccountName=capitastarstorageacctest;AccountKey=A51dFg8jfMWTsjRSvT40GwaHxcNnUGz1bRiu6JZAuvnLBthzh+iITi6507REwLYo23ZZeCPVWY1i8zLRTxAvnQ==;
@@ -94,7 +95,7 @@ class AzureService(object):
             if '.JPG' == suffix or 'JPEG' == suffix:
                 receipt_metadata = ReceiptSerialize()
                 receipt_metadata.receiptBlobName = unicode(filename, 'utf-8')
-                self.qs.put_message(self.getname, receipt_metadata.toString()) 
+                self.qs.put_message(self.getname, b64encode(receipt_metadata.toString()).decode('utf-8')) 
                 self.bs.create_blob_from_path(self.ctnname, receipt_metadata.receiptBlobName, os.path.join(folderpath, filename), max_connections=2, timeout=None)
                 logger.info('upload %s', filename)
     

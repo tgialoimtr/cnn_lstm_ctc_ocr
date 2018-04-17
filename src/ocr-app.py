@@ -6,6 +6,7 @@ from multiprocessing import Process, Manager, Pool
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from azure.common import AzureException, AzureMissingResourceHttpError
+import argparse
 
 from processing.pagepredictor import PagePredictor
 from processing.server import LocalServer
@@ -13,6 +14,17 @@ from extract_fields.extract import CLExtractor
 from inputoutput.receipt import ExtractedData, ReceiptSerialize
 from inputoutput.azureservice import AzureService
 from common import args
+from base64 import b64encode
+
+
+parser = argparse.ArgumentParser("OCR-App for receipts")
+# local processing
+parser.add_argument("-i","--input",default=args.imgsdir,
+                    help="input images, can be a directory or a single file")
+parser.add_argument("-o","--ouput",default="./result.csv",
+                    help="output csv path")
+cmd_args = parser.parse_args()
+
 
 def createLogger(name):
     logFormatter = logging.Formatter("%(asctime)s [%(name)-12.12s] [%(levelname)-5.5s]  %(message)s")
@@ -47,18 +59,41 @@ def runserver(server, states):
 def ocrLocalPath(reader, num, states):
     logger = createLogger('local-' + str(num))
     logger.info('process %d start pushing image.', num)
-    imglist = sorted(os.listdir(args.imgsdir), reverse=False)
-    for filename in imglist:
-        states[num] += 1
-        if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
-            try:
-                lines = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
-            except Exception:
-                logger.exception('EXCEPTION WHILE READING LINES.')
-            if lines is None or len(lines) == 0: continue
-            with open(args.textsdir + filename + '.txt', 'w') as outfile:
-                for line in lines:
-                    outfile.write(line + '\n')
+    if os.path.isdir(cmd_args.input):
+        imglist = sorted(os.listdir(cmd_args.input), reverse=False)
+    else:
+        imglist = [cmd_args.input]
+    keys = ["status", "deviceName", "zipcode", "storeName", "receiptBlobName", "station", "mallName", "amount", "mobileVersion", "currency", "token", 
+        "program", "gstNo", "totalNumber", "receiptCrmName", "memberNumber", "receiptDateTime", "receiptId", "locationCode", "uploadLocalFolder", "qualityCode"]
+    
+    with open(cmd_args.output, 'w') as outfile:
+        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer.writeheader()      
+        for filename in imglist:
+            states[num] += 1
+            if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
+                try:
+                    lines, qualityCode = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+                    extdata = extractor.extract(lines)
+                    extdata.qualityCode = qualityCode
+                except Exception:
+                    logger.exception('EXCEPTION WHILE READING LINES.')
+                    extdata = ExtractedData()
+                    extdata.qualityCode = 0
+                
+                rinfo = ReceiptSerialize()
+                rinfo.receiptBlobName = unicode(filename, 'utf-8')
+                newrow = json.loads(rinfo.combineExtractedData(extdata))
+                for k in newrow:
+                    if type(newrow[k]) is unicode:
+                        newrow[k] = newrow[k].encode('ascii','ignore')
+                dict_writer.writerow(newrow)
+                
+                if lines is None or len(lines) == 0: continue
+                with open(args.textsdir + filename + '.txt', 'w') as outfile:
+                    for line in lines:
+                        outfile.write(line + '\n')
+            
 
     
 def ocrQueue(reader, num, states):
@@ -87,10 +122,11 @@ def ocrQueue(reader, num, states):
                         except Exception:
                             logger.exception('EXCEPTION WHILE EXTRACTING LINES AND FIELDS.')
                             extdata = ExtractedData()
+                            extdata.qualityCode = 0
                         try:
                             outmsg = rinfo.combineExtractedData(extdata)
                             logger.info('%d, %s', states[num], outmsg)
-                            service.pushMessage(outmsg, logger=logger)
+                            service.pushMessage(b64encode(outmsg).decode('utf-8'), logger=logger) # Fix bug b64-encode type of Azure
                             service.deleteMessage(m, logger=logger)
                             service.deleteImage(rinfo.receiptBlobName, logger=logger)
                             os.remove(lp)
