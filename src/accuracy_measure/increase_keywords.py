@@ -81,14 +81,10 @@ def suggestLC(storecol, lines):
     rs_store = sorted(rs_store, key=lambda x:(x[1], x[0].storeKeyword, x[0].mallKeyword))
     return [x[0] for x in rs_store]
 
-def locodeExist(topx00path, locode):
-    for line in open(topx00path, 'r'):
-        lc = line.rstrip().split(',')[1]
-        if lc==locode:
-            print(locode + ' exists in csv')
-            return True
-    print(locode + ' doesnot exist in csv')
-    return False
+def locodeExist(topx00path, locodes):
+    lcs = [line.rstrip().split(',')[1] for line in open(topx00path, 'r')]
+    inlocodes = [x in lcs for x in locodes]
+    return inlocodes
 
 
 def appendToTop(topx00path, newlc):
@@ -182,8 +178,15 @@ if __name__ == '__main__':
                     if kws == 'n': break
                     kws = kws.split(',')
                     suggestions = suggestLC(storecol, kws)
-                    for i, lc in enumerate(suggestions):
-                        print('%d: %s' % ( i, lc.toString()))
+                    locodes = [sgt.locationCode for sgt in suggestions]
+                    intopx00 = locodeExist(topx00path, locodes)
+                    
+                    for i, (lc, intop) in enumerate(zip(suggestions, intopx00)):
+                        if intop:
+                            print('IN-DB', end='')
+                        else:
+                            print('     ', end = '')
+                        print('%2d: %s' % ( i, lc.toString()))
                 else:
                     print('Unknown Command.')
     
