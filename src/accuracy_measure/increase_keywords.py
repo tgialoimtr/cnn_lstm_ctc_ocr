@@ -93,9 +93,9 @@ def appendToTop(topx00path, newlc):
 
 
 logger = createLogger('main')
-largedata = '/home/loitg/part1/'
-textspath = '/tmp/textresult/'
-infopath = '/tmp/trung_kw_3.csv'
+largedata = '/root/build_data/13kreceipts/'
+textspath = '/root/build_data/texts/'
+infopath = '/root/build_data/trung_kw_3.csv'
 
 try:
     configlines =  list(open('./.abc.txt', 'r'))
