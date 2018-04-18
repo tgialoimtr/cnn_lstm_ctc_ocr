@@ -7,6 +7,8 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from azure.common import AzureException, AzureMissingResourceHttpError
 import argparse
+import csv
+import simplejson as json
 
 from processing.pagepredictor import PagePredictor
 from processing.server import LocalServer
@@ -21,7 +23,7 @@ parser = argparse.ArgumentParser("OCR-App for receipts")
 # local processing
 parser.add_argument("-i","--input",default=args.imgsdir,
                     help="input images, can be a directory or a single file")
-parser.add_argument("-o","--ouput",default="./result.csv",
+parser.add_argument("-o","--output",default="./result.csv",
                     help="output csv path")
 cmd_args = parser.parse_args()
 
@@ -65,34 +67,37 @@ def ocrLocalPath(reader, num, states):
         imglist = [cmd_args.input]
     keys = ["status", "deviceName", "zipcode", "storeName", "receiptBlobName", "station", "mallName", "amount", "mobileVersion", "currency", "token", 
         "program", "gstNo", "totalNumber", "receiptCrmName", "memberNumber", "receiptDateTime", "receiptId", "locationCode", "uploadLocalFolder", "qualityCode"]
-    
+    extractor = CLExtractor()
     with open(cmd_args.output, 'w') as outfile:
-        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer = csv.DictWriter(outfile, keys)
         dict_writer.writeheader()      
-        for filename in imglist:
-            states[num] += 1
-            if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
-                try:
-                    lines, qualityCode = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
-                    extdata = extractor.extract(lines)
-                    extdata.qualityCode = qualityCode
-                except Exception:
-                    logger.exception('EXCEPTION WHILE READING LINES.')
-                    extdata = ExtractedData()
-                    extdata.qualityCode = 0
-                
-                rinfo = ReceiptSerialize()
-                rinfo.receiptBlobName = unicode(filename, 'utf-8')
-                newrow = json.loads(rinfo.combineExtractedData(extdata))
-                for k in newrow:
-                    if type(newrow[k]) is unicode:
-                        newrow[k] = newrow[k].encode('ascii','ignore')
+    for filename in imglist:
+        states[num] += 1
+        if filename[-3:].upper() in ['JPG', 'PEG'] and hash(filename) % args.numprocess == num:
+            try:
+                lines, qualityCode = reader.ocrImage(os.path.join(args.imgsdir, filename), logger)
+                extdata = extractor.extract(lines)
+                extdata.qualityCode = qualityCode
+            except Exception:
+                logger.exception('EXCEPTION WHILE READING LINES.')
+                extdata = ExtractedData()
+                extdata.qualityCode = 0
+            
+            rinfo = ReceiptSerialize()
+            rinfo.receiptBlobName = unicode(filename, 'utf-8')
+            newrow = json.loads(rinfo.combineExtractedData(extdata))
+            for k in newrow:
+                if type(newrow[k]) is unicode:
+                    newrow[k] = newrow[k].encode('ascii','ignore')
+            with open(cmd_args.output, 'a') as outfile2:
+                print ('write ' + str(newrow) + ' to ' + cmd_args.output)
+                dict_writer = csv.DictWriter(outfile2, keys)
                 dict_writer.writerow(newrow)
-                
-                if lines is None or len(lines) == 0: continue
-                with open(args.textsdir + filename + '.txt', 'w') as outfile:
-                    for line in lines:
-                        outfile.write(line + '\n')
+            
+            if lines is None or len(lines) == 0: continue
+            with open(args.textsdir + filename + '.txt', 'w') as outfile3:
+                for line in lines:
+                    outfile3.write(line + '\n')
             
 
     

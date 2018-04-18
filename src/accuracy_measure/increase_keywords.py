@@ -97,8 +97,8 @@ def appendToTop(topx00path, newlc):
 
 
 logger = createLogger('main')
-largedata = '/home/loitg/Downloads/complex-bg/'
-textspath = '/home/loitg/Downloads/complex-bg/tmp/'
+largedata = '/home/loitg/part1/'
+textspath = '/tmp/textresult/'
 infopath = '/home/loitg/trung_kw_3.csv'
 
 try:
@@ -113,11 +113,11 @@ def nextImage(fn, show=False):
     locode0 = extractor.locode_extr.extract(lines[:])
     locs = locode0.split('=,=')
     if len(locs) == 5:# SKIP
-        print('0' + locs[0])
-        print('1' + locs[1])
-        print('2' + locs[2])
-        print('3' + locs[3])
-        print('4' + locs[4])
+        print('%-15s:%s' % ('Location Code', locs[0]))
+        print('%-15s:%s' % ('Mall', locs[1]))
+        print('%-15s:%s' % ('Store', locs[2]))
+        print('%-15s:%s' % ('GST No', locs[3]))
+        print('%-15s:%s' % ('ZipCode', locs[4]))
         return True
     else: #unable to find
         #display image
@@ -128,7 +128,7 @@ def nextImage(fn, show=False):
 
 
 if __name__ == '__main__':
-    storecol, _ = createColumnsCsv(infopath)
+#     storecol, _ = createColumnsCsv(infopath)
     currentfile = configlines[0].rstrip() if len(configlines) > 0 else None
     extractor = CLExtractor()
     textfiles = sorted(os.listdir(textspath))
@@ -136,30 +136,41 @@ if __name__ == '__main__':
     
     try:
         skip_known = False
+        to_right = True
         #new loop
         while True:
             locodefound = nextImage(textfiles[currentfile_index])
             fn = textfiles[currentfile_index][:-4]
             print('Current file: ' + fn + '-----------------')
-            if skip_known and locodefound: continue
+            if skip_known and locodefound: 
+                if to_right:
+                    if currentfile_index < len(textfiles) - 1: currentfile_index += 1
+                else:
+                    if currentfile_index > 0: currentfile_index -= 1
+                continue
             fn = os.path.join(largedata, fn) 
             show(fn)
             while True:
+                print('Current file: ' + fn + '-----------------')
                 k = raw_input('A,D,1,3,Space: ')
                 if k == 'a':
                     skip_known = True
+                    to_right = False
                     if currentfile_index > 0: currentfile_index -= 1
                     break
                 elif k == 'd':
                     skip_known = True
+                    to_right = True
                     if currentfile_index < len(textfiles) - 1: currentfile_index += 1
                     break
                 elif k == '1':
                     skip_known = False
+                    to_right = False
                     if currentfile_index > 0: currentfile_index -= 1
                     break
                 elif k == '3':
                     skip_known = False
+                    to_right = True
                     if currentfile_index < len(textfiles) - 1: currentfile_index += 1
                     break
                 elif k == ' ':
