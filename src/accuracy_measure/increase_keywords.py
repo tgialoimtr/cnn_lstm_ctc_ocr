@@ -37,11 +37,11 @@ def show(imgpath):
     h, w = img.shape[:2]
     newwidth = int(950.0 * w / h)
     if newwidth > 300:
-        img = cv2.resize(img, (newwidth, 900))
-        cv2.imshow('kk', img)
-        cv2.waitKey(500)
+        img = cv2.resize(img, (newwidth, 950))
     else:
-        os.system('xdg-open ' + imgpath)
+        img = cv2.resize(img, (300, int(300.0 * h / w)))
+    cv2.imshow('kk', img)
+    cv2.waitKey(500)
 
 s = '=-=++-='
 
@@ -89,7 +89,7 @@ def locodeExist(topx00path, locodes):
 
 def appendToTop(topx00path, newlc):
     with open(topx00path, 'a') as of:
-        of.write(',' + newlc.locationCode + ',,'  + newlc.mallKeyword + ','  + newlc.storeKeyword + ','  + newlc.zipcode + ','  + newlc.gst + '\n' )
+        of.write(',' + newlc['code'] + ',,'  + newlc['mall'] + ','  + newlc['store'] + ','  + newlc['zipcode'] + ','  + newlc['gst'] + '\n' )
 
 
 logger = createLogger('main')
@@ -120,7 +120,21 @@ def nextImage(fn, show=False):
 #         fn = fn[:-4]  
 #         show(os.path.join(largedata, fn))
         return False
-    
+
+def enter(name):
+    if name == 'code':
+        fullName = 'LocationCode'
+    elif name == 'gst':
+        fullName = 'GST No'
+    elif name == 'zipcode':
+        fullName = 'ZipCode'
+    elif name == 'store':
+        fullName = 'Store Name'
+    elif name == 'mall':
+        fullName = 'Mall Name'
+    print("%-11s: " % fullName, end='')
+    user_input = sys.stdin.readline().rstrip()
+    return user_input
 
 
 if __name__ == '__main__':
@@ -148,7 +162,8 @@ if __name__ == '__main__':
             show(fn)
             while True:
                 print('Current file: ' + fn + '-----------------')
-                k = raw_input('A,D,1,3,Space,F: ')
+                print('A,D,1,3, (T)ext, (F)ind, (I)nput: ', end = '')
+                k = sys.stdin.readline().rstrip()
                 if k == 'a':
                     skip_known = True
                     to_right = False
@@ -169,12 +184,13 @@ if __name__ == '__main__':
                     to_right = True
                     if currentfile_index < len(textfiles) - 1: currentfile_index += 1
                     break
-                elif k == ' ':
+                elif k == 't':
                     with open(os.path.join(textspath, textfiles[currentfile_index]), 'r') as f:
                         for line in f:
                             print(line.rstrip())
                 elif k == 'f':
-                    kws = raw_input('store name to find locode: ')
+                    print('store name to find locode: ', end = '')
+                    kws = sys.stdin.readline().rstrip()
                     if kws == 'n': break
                     kws = kws.split(',')
                     suggestions = suggestLC(storecol, kws)
@@ -187,10 +203,26 @@ if __name__ == '__main__':
                         else:
                             print('     ', end = '')
                         print('%2d: %s' % ( i, lc.toString()))
+                elif k == 'i':
+                    kw = {}
+                    kw['code'] = enter('code')
+                    kw['mall'] = enter('mall')
+                    kw['store'] = enter('store')
+                    kw['zipcode'] = enter('zipcode')
+                    kw['gst'] = enter('gst')
+                    while True:
+                        print('Edit code, mall, store, zipcode, gst, or done ? ', end='')
+                        editwhat = sys.stdin.readline().rstrip()
+                        if editwhat.lower() in ['d', 'done']:
+                            appendToTop(topx00path, kw)
+                            break
+                        elif editwhat.lower() in ['gst', 'zipcode', 'mall', 'store']:
+                            kw[editwhat] = enter(editwhat)                            
                 else:
                     print('Unknown Command.')
     
     except KeyboardInterrupt:
+        print()
         with open('./.abc.txt', 'w') as of:
             of.write(textfiles[currentfile_index] + '\n')
         sys.exit(0)
@@ -208,52 +240,52 @@ if __name__ == '__main__':
      
      
     # loop through folder to find locationcode from currentfile
-    for fn in os.listdir(textspath):
-        if currentfile is not None:
-            if fn != currentfile:
-                continue
-            else:
-                currentfile = None
-         
-        lines = list(open(os.path.join(textspath, fn), 'r'))
-        locode0 = extractor.locode_extr.extract(lines[:])
-        locs = locode0.split('=,=')
-        if len(locs) == 5:# SKIP
-            print(str(locs))
-        else: #unable to find
-            #display image
-            fn = fn[:-4]  
-            show(os.path.join(largedata, fn))
-            lcid = 'n'
-            while True:
-                kws = raw_input('store name to find locode: ')
-                if kws == 'n': break
-                kws = kws.split(',')
-                suggestions = suggestLC(storecol, kws)
-                if len(suggestions) == 0: continue
-                for i, lc in enumerate(suggestions):
-                    print('%d: %s' % ( i, lc.toString()))
-                lcid = raw_input('locationcode id: ')
-                if lcid == 'n': break
-                try:
-                    lcid = int(lcid)
-                    if lcid >= 0: break
-                except Exception:
-                    pass
-            if lcid == 'n': continue
-            newlc = suggestions[lcid]
-            # find locationcode exist in topx00 or not
-            if not locodeExist(topx00path, newlc.locationCode):
-                #input new gst, zipcode, store mall for lcid
-                newlc.storeKeyword = raw_input('store keyowrds: ')
-                if newlc.storeKeyword == 'n': continue
-                newlc.mallKeyword = raw_input('mall keyowrds: ')
-                if newlc.mallKeyword == 'n': continue
-                newlc.gst = raw_input('gst: ')
-                if newlc.gst == 'n': continue
-                newlc.zipcode = raw_input('zipcode: ')
-                if newlc.zipcode == 'n': continue
-                appendToTop(topx00path, newlc)
+#     for fn in os.listdir(textspath):
+#         if currentfile is not None:
+#             if fn != currentfile:
+#                 continue
+#             else:
+#                 currentfile = None
+#          
+#         lines = list(open(os.path.join(textspath, fn), 'r'))
+#         locode0 = extractor.locode_extr.extract(lines[:])
+#         locs = locode0.split('=,=')
+#         if len(locs) == 5:# SKIP
+#             print(str(locs))
+#         else: #unable to find
+#             #display image
+#             fn = fn[:-4]  
+#             show(os.path.join(largedata, fn))
+#             lcid = 'n'
+#             while True:
+#                 kws = raw_input('store name to find locode: ')
+#                 if kws == 'n': break
+#                 kws = kws.split(',')
+#                 suggestions = suggestLC(storecol, kws)
+#                 if len(suggestions) == 0: continue
+#                 for i, lc in enumerate(suggestions):
+#                     print('%d: %s' % ( i, lc.toString()))
+#                 lcid = raw_input('locationcode id: ')
+#                 if lcid == 'n': break
+#                 try:
+#                     lcid = int(lcid)
+#                     if lcid >= 0: break
+#                 except Exception:
+#                     pass
+#             if lcid == 'n': continue
+#             newlc = suggestions[lcid]
+#             # find locationcode exist in topx00 or not
+#             if not locodeExist(topx00path, newlc.locationCode):
+#                 #input new gst, zipcode, store mall for lcid
+#                 newlc.storeKeyword = raw_input('store keyowrds: ')
+#                 if newlc.storeKeyword == 'n': continue
+#                 newlc.mallKeyword = raw_input('mall keyowrds: ')
+#                 if newlc.mallKeyword == 'n': continue
+#                 newlc.gst = raw_input('gst: ')
+#                 if newlc.gst == 'n': continue
+#                 newlc.zipcode = raw_input('zipcode: ')
+#                 if newlc.zipcode == 'n': continue
+#                 appendToTop(topx00path, newlc)
             
 #a d:normal
 #A D:skip known  # also SKIP unkown usually repeated.

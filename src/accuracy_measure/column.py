@@ -45,7 +45,7 @@ class Store(object):
         return self.storedict[colname]
     
     def toString(self):
-        return '%13s--%20s--%s' % (self.locationCode, self.mallKeyword, self.storeKeyword)
+        return '%13s --%20s--%s' % (self.locationCode, self.mallKeyword, self.storeKeyword)
 
 class Column(object):
 
