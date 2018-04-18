@@ -12,7 +12,6 @@ from common import args
 from multiprocessing import Process, Manager, Pool
 import json
 from extract_fields.extract import CLExtractor
-from accuracy_measure.settings import Settings
 from column import Store, Column
 import numpy as np
 import pandas as pd
@@ -101,54 +100,78 @@ logger = createLogger('main')
 largedata = '/home/loitg/Downloads/complex-bg/'
 textspath = '/home/loitg/Downloads/complex-bg/tmp/'
 infopath = '/home/loitg/trung_kw_3.csv'
-CURRENT_FILE = 'current_file'
-storecol, _ = createColumnsCsv(infopath)
 
-settings = Settings()
-settings.load()
+try:
+    configlines =  list(open('./.abc.txt', 'r'))
+except IOError:
+    configlines = []
+
 topx00path = os.path.join(args.javapath, args.dbfile)
-currentfile = settings.load(CURRENT_FILE, None)
-extractor = CLExtractor()
     
 def nextImage(fn, show=False):
     lines = list(open(os.path.join(textspath, fn), 'r'))
     locode0 = extractor.locode_extr.extract(lines[:])
     locs = locode0.split('=,=')
     if len(locs) == 5:# SKIP
-        print(str(locs))
-        
+        print('0' + locs[0])
+        print('1' + locs[1])
+        print('2' + locs[2])
+        print('3' + locs[3])
+        print('4' + locs[4])
+        return True
     else: #unable to find
         #display image
-        fn = fn[:-4]  
-        show(os.path.join(largedata, fn))
-        lcid = 'n'
+#         fn = fn[:-4]  
+#         show(os.path.join(largedata, fn))
+        return False
     
 
 
 if __name__ == '__main__':
-    
+    storecol, _ = createColumnsCsv(infopath)
+    currentfile = configlines[0].rstrip() if len(configlines) > 0 else None
+    extractor = CLExtractor()
     textfiles = sorted(os.listdir(textspath))
     currentfile_index = textfiles.index(currentfile) if currentfile else 0
-        
+    
     try:
+        skip_known = False
         #new loop
         while True:
-            k = raw_input('A,D,shift-A,shift-D,Space: ')
-            if k == 'a':
-                pass
-            elif k == 'd':
-                pass
-            elif k == 'A':
-                pass
-            elif k == 'D':
-                pass
-            elif k == ' ':
-                pass
-
+            locodefound = nextImage(textfiles[currentfile_index])
+            fn = textfiles[currentfile_index][:-4]
+            print('Current file: ' + fn + '-----------------')
+            if skip_known and locodefound: continue
+            fn = os.path.join(largedata, fn) 
+            show(fn)
+            while True:
+                k = raw_input('A,D,1,3,Space: ')
+                if k == 'a':
+                    skip_known = True
+                    if currentfile_index > 0: currentfile_index -= 1
+                    break
+                elif k == 'd':
+                    skip_known = True
+                    if currentfile_index < len(textfiles) - 1: currentfile_index += 1
+                    break
+                elif k == '1':
+                    skip_known = False
+                    if currentfile_index > 0: currentfile_index -= 1
+                    break
+                elif k == '3':
+                    skip_known = False
+                    if currentfile_index < len(textfiles) - 1: currentfile_index += 1
+                    break
+                elif k == ' ':
+                    with open(os.path.join(textspath, textfiles[currentfile_index]), 'r') as f:
+                        for line in f:
+                            print(line.rstrip())
+                else:
+                    print('Unknown Command.')
     
     except KeyboardInterrupt:
-        settings[CURRENT_FILE] = 0
-        settings.save()
+        with open('./.abc.txt', 'w') as of:
+            of.write(textfiles[currentfile_index] + '\n')
         sys.exit(0)
     
     
@@ -156,60 +179,60 @@ if __name__ == '__main__':
     
     
     
-    
-    
-    
-    
-    
-    
-    
-    # loop through folder to find locationcode from currentfile
-    for fn in os.listdir(textspath):
-        if currentfile is not None:
-            if fn != currentfile:
-                continue
-            else:
-                currentfile = None
-        
-        lines = list(open(os.path.join(textspath, fn), 'r'))
-        locode0 = extractor.locode_extr.extract(lines[:])
-        locs = locode0.split('=,=')
-        if len(locs) == 5:# SKIP
-            print(str(locs))
-        else: #unable to find
-            #display image
-            fn = fn[:-4]  
-            show(os.path.join(largedata, fn))
-            lcid = 'n'
-            while True:
-                kws = raw_input('store name to find locode: ')
-                if kws == 'n': break
-                kws = kws.split(',')
-                suggestions = suggestLC(storecol, kws)
-                if len(suggestions) == 0: continue
-                for i, lc in enumerate(suggestions):
-                    print('%d: %s' % ( i, lc.toString()))
-                lcid = raw_input('locationcode id: ')
-                if lcid == 'n': break
-                try:
-                    lcid = int(lcid)
-                    if lcid >= 0: break
-                except Exception:
-                    pass
-            if lcid == 'n': continue
-            newlc = suggestions[lcid]
-            # find locationcode exist in topx00 or not
-            if not locodeExist(topx00path, newlc.locationCode):
-                #input new gst, zipcode, store mall for lcid
-                newlc.storeKeyword = raw_input('store keyowrds: ')
-                if newlc.storeKeyword == 'n': continue
-                newlc.mallKeyword = raw_input('mall keyowrds: ')
-                if newlc.mallKeyword == 'n': continue
-                newlc.gst = raw_input('gst: ')
-                if newlc.gst == 'n': continue
-                newlc.zipcode = raw_input('zipcode: ')
-                if newlc.zipcode == 'n': continue
-                appendToTop(topx00path, newlc)
+#     
+#     
+#     
+#     
+#     
+#     
+#     
+#     # loop through folder to find locationcode from currentfile
+#     for fn in os.listdir(textspath):
+#         if currentfile is not None:
+#             if fn != currentfile:
+#                 continue
+#             else:
+#                 currentfile = None
+#         
+#         lines = list(open(os.path.join(textspath, fn), 'r'))
+#         locode0 = extractor.locode_extr.extract(lines[:])
+#         locs = locode0.split('=,=')
+#         if len(locs) == 5:# SKIP
+#             print(str(locs))
+#         else: #unable to find
+#             #display image
+#             fn = fn[:-4]  
+#             show(os.path.join(largedata, fn))
+#             lcid = 'n'
+#             while True:
+#                 kws = raw_input('store name to find locode: ')
+#                 if kws == 'n': break
+#                 kws = kws.split(',')
+#                 suggestions = suggestLC(storecol, kws)
+#                 if len(suggestions) == 0: continue
+#                 for i, lc in enumerate(suggestions):
+#                     print('%d: %s' % ( i, lc.toString()))
+#                 lcid = raw_input('locationcode id: ')
+#                 if lcid == 'n': break
+#                 try:
+#                     lcid = int(lcid)
+#                     if lcid >= 0: break
+#                 except Exception:
+#                     pass
+#             if lcid == 'n': continue
+#             newlc = suggestions[lcid]
+#             # find locationcode exist in topx00 or not
+#             if not locodeExist(topx00path, newlc.locationCode):
+#                 #input new gst, zipcode, store mall for lcid
+#                 newlc.storeKeyword = raw_input('store keyowrds: ')
+#                 if newlc.storeKeyword == 'n': continue
+#                 newlc.mallKeyword = raw_input('mall keyowrds: ')
+#                 if newlc.mallKeyword == 'n': continue
+#                 newlc.gst = raw_input('gst: ')
+#                 if newlc.gst == 'n': continue
+#                 newlc.zipcode = raw_input('zipcode: ')
+#                 if newlc.zipcode == 'n': continue
+#                 appendToTop(topx00path, newlc)
             
 #a d:normal
 #A D:skip known  # also SKIP unkown usually repeated.
