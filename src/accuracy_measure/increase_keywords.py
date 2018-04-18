@@ -99,7 +99,7 @@ def appendToTop(topx00path, newlc):
 logger = createLogger('main')
 largedata = '/home/loitg/part1/'
 textspath = '/tmp/textresult/'
-infopath = '/home/loitg/trung_kw_3.csv'
+infopath = '/tmp/trung_kw_3.csv'
 
 try:
     configlines =  list(open('./.abc.txt', 'r'))
@@ -128,7 +128,7 @@ def nextImage(fn, show=False):
 
 
 if __name__ == '__main__':
-#     storecol, _ = createColumnsCsv(infopath)
+    storecol, _ = createColumnsCsv(infopath)
     currentfile = configlines[0].rstrip() if len(configlines) > 0 else None
     extractor = CLExtractor()
     textfiles = sorted(os.listdir(textspath))
@@ -152,7 +152,7 @@ if __name__ == '__main__':
             show(fn)
             while True:
                 print('Current file: ' + fn + '-----------------')
-                k = raw_input('A,D,1,3,Space: ')
+                k = raw_input('A,D,1,3,Space,F: ')
                 if k == 'a':
                     skip_known = True
                     to_right = False
@@ -177,6 +177,13 @@ if __name__ == '__main__':
                     with open(os.path.join(textspath, textfiles[currentfile_index]), 'r') as f:
                         for line in f:
                             print(line.rstrip())
+                elif k == 'f':
+                    kws = raw_input('store name to find locode: ')
+                    if kws == 'n': break
+                    kws = kws.split(',')
+                    suggestions = suggestLC(storecol, kws)
+                    for i, lc in enumerate(suggestions):
+                        print('%d: %s' % ( i, lc.toString()))
                 else:
                     print('Unknown Command.')
     
@@ -190,60 +197,60 @@ if __name__ == '__main__':
     
     
     
-#     
-#     
-#     
-#     
-#     
-#     
-#     
-#     # loop through folder to find locationcode from currentfile
-#     for fn in os.listdir(textspath):
-#         if currentfile is not None:
-#             if fn != currentfile:
-#                 continue
-#             else:
-#                 currentfile = None
-#         
-#         lines = list(open(os.path.join(textspath, fn), 'r'))
-#         locode0 = extractor.locode_extr.extract(lines[:])
-#         locs = locode0.split('=,=')
-#         if len(locs) == 5:# SKIP
-#             print(str(locs))
-#         else: #unable to find
-#             #display image
-#             fn = fn[:-4]  
-#             show(os.path.join(largedata, fn))
-#             lcid = 'n'
-#             while True:
-#                 kws = raw_input('store name to find locode: ')
-#                 if kws == 'n': break
-#                 kws = kws.split(',')
-#                 suggestions = suggestLC(storecol, kws)
-#                 if len(suggestions) == 0: continue
-#                 for i, lc in enumerate(suggestions):
-#                     print('%d: %s' % ( i, lc.toString()))
-#                 lcid = raw_input('locationcode id: ')
-#                 if lcid == 'n': break
-#                 try:
-#                     lcid = int(lcid)
-#                     if lcid >= 0: break
-#                 except Exception:
-#                     pass
-#             if lcid == 'n': continue
-#             newlc = suggestions[lcid]
-#             # find locationcode exist in topx00 or not
-#             if not locodeExist(topx00path, newlc.locationCode):
-#                 #input new gst, zipcode, store mall for lcid
-#                 newlc.storeKeyword = raw_input('store keyowrds: ')
-#                 if newlc.storeKeyword == 'n': continue
-#                 newlc.mallKeyword = raw_input('mall keyowrds: ')
-#                 if newlc.mallKeyword == 'n': continue
-#                 newlc.gst = raw_input('gst: ')
-#                 if newlc.gst == 'n': continue
-#                 newlc.zipcode = raw_input('zipcode: ')
-#                 if newlc.zipcode == 'n': continue
-#                 appendToTop(topx00path, newlc)
+     
+     
+     
+     
+     
+     
+     
+    # loop through folder to find locationcode from currentfile
+    for fn in os.listdir(textspath):
+        if currentfile is not None:
+            if fn != currentfile:
+                continue
+            else:
+                currentfile = None
+         
+        lines = list(open(os.path.join(textspath, fn), 'r'))
+        locode0 = extractor.locode_extr.extract(lines[:])
+        locs = locode0.split('=,=')
+        if len(locs) == 5:# SKIP
+            print(str(locs))
+        else: #unable to find
+            #display image
+            fn = fn[:-4]  
+            show(os.path.join(largedata, fn))
+            lcid = 'n'
+            while True:
+                kws = raw_input('store name to find locode: ')
+                if kws == 'n': break
+                kws = kws.split(',')
+                suggestions = suggestLC(storecol, kws)
+                if len(suggestions) == 0: continue
+                for i, lc in enumerate(suggestions):
+                    print('%d: %s' % ( i, lc.toString()))
+                lcid = raw_input('locationcode id: ')
+                if lcid == 'n': break
+                try:
+                    lcid = int(lcid)
+                    if lcid >= 0: break
+                except Exception:
+                    pass
+            if lcid == 'n': continue
+            newlc = suggestions[lcid]
+            # find locationcode exist in topx00 or not
+            if not locodeExist(topx00path, newlc.locationCode):
+                #input new gst, zipcode, store mall for lcid
+                newlc.storeKeyword = raw_input('store keyowrds: ')
+                if newlc.storeKeyword == 'n': continue
+                newlc.mallKeyword = raw_input('mall keyowrds: ')
+                if newlc.mallKeyword == 'n': continue
+                newlc.gst = raw_input('gst: ')
+                if newlc.gst == 'n': continue
+                newlc.zipcode = raw_input('zipcode: ')
+                if newlc.zipcode == 'n': continue
+                appendToTop(topx00path, newlc)
             
 #a d:normal
 #A D:skip known  # also SKIP unkown usually repeated.
