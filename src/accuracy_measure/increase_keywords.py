@@ -83,6 +83,7 @@ def suggestLC(storecol, lines):
 
 def locodeExist(topx00path, locodes):
     lcs = [line.rstrip().split(',')[1] for line in open(topx00path, 'r')]
+    lcs = [line.split('_')[0] for line in lcs]
     inlocodes = [x in lcs for x in locodes]
     return inlocodes
 
@@ -158,7 +159,7 @@ if __name__ == '__main__':
                 else:
                     if currentfile_index > 0: currentfile_index -= 1
                 continue
-            fn = os.path.join(largedata, fn) 
+            fn = os.path.join(largedata, fn)
             show(fn)
             while True:
                 print('Current file: ' + fn + '-----------------')
@@ -216,8 +217,8 @@ if __name__ == '__main__':
                         if editwhat.lower() in ['d', 'done']:
                             appendToTop(topx00path, kw)
                             break
-                        elif editwhat.lower() in ['gst', 'zipcode', 'mall', 'store']:
-                            kw[editwhat] = enter(editwhat)                            
+                        elif editwhat.lower().strip() in ['code', 'gst', 'zipcode', 'mall', 'store']:
+                            kw[editwhat.lower().strip()] = enter(editwhat.lower().strip())                            
                 else:
                     print('Unknown Command.')
     
