@@ -18,18 +18,22 @@ def queuePush2Csv(logfilepath, csvpath):
             "program", "gstNo", "totalNumber", "receiptCrmName", "memberNumber", "receiptDateTime", "receiptId", "locationCode", "uploadLocalFolder", "qualityCode"]   
 
     with open(csvpath, 'w') as output_file:
-        dict_writer = csv.DictWriter(output_file, keys)
-        dict_writer.writeheader()
+        if csvpath[-3:].upper() == 'CSV':
+            dict_writer = csv.DictWriter(output_file, keys)
+            dict_writer.writeheader()
         for line in logfile:
             r = pushmsglog.match(line)
             if r:
                 print r.group(3)
+                if csvpath[-3:].upper() != 'CSV':
+                    output_file.write(r.group(3) + '\n')
+                    continue
                 newrow = json.loads(r.group(3))
                 for k in newrow:
                     if type(newrow[k]) is unicode:
                         newrow[k] = newrow[k].encode('ascii','ignore')
-                print type(newrow['currency'])
-                print newrow
+                #print type(newrow['currency'])
+                #print newrow
                 dict_writer.writerow(newrow)
                 
 
