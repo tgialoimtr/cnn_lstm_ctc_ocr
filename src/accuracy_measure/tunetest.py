@@ -99,9 +99,8 @@ if __name__ == "__main__":
             try:
                 i += 1
                 tt = time()
-                print str(i)
                 extdata = extractor.extract(lines)
-                print str(i) + ':' + str(time() - tt)
+                print str(i) + ':---------------------------------------------------'# + str(time() - tt)
             except Exception:
                 logger.exception('EXCEPTION WHILE READING LINES.')
                 extdata = ExtractedData()

@@ -13,7 +13,8 @@ if __name__ == '__main__':
         top600path = sys.argv[2]
         outpath = sys.argv[3]
     except Exception:
-        print("groupbypath, topx00.csv, outputfolder");
+        print("groupbypath, topx00.csv, outputfolder")
+        sys.exit(0)
     print(top600path)
     print(groupbypath)
     
@@ -21,10 +22,10 @@ if __name__ == '__main__':
     abc = []
     for i, line in enumerate(open(top600path, 'r')):
         temp = line.split(',')
-        top600[temp[0]] = {}
-        top600[temp[0]]['name'] = temp[1]
-        top600[temp[0]]['rank'] = str(i)
-        abc.append((i, temp[0]))
+        top600[temp[1]] = {}
+        top600[temp[1]]['name'] = temp[1]
+        top600[temp[1]]['rank'] = str(i)
+        abc.append((i, temp[1]))
 
     for _, locode in sorted(abc):
         filelist = []

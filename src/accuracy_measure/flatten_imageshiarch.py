@@ -3,17 +3,23 @@ Created on Feb 12, 2018
 
 @author: loitg
 '''
-import sys, os
-from shutil import copyfile
+import os
+import sys
+import shutil
 
-def recursiveCopy(destination, outdest, depth=None):
-    if not depth:
-        depth = []
-    for file_or_dir in os.listdir(os.path.join([destination] + depth, os.sep)):
-        if os.path.isfile(file_or_dir):
-            copyfile(file_or_dir, outdest)
-        else:
-            recursiveCopy(destination, outdest, os.path.join(depth + [file_or_dir], os.sep))
+def recursiveCopy(destination, outpath):
+    all_files = []
+    first_loop_pass = True
+    for root, _dirs, files in os.walk(destination):
+        if first_loop_pass:
+            first_loop_pass = False
+            continue
+        for filename in files:
+            all_files.append(os.path.join(root, filename))
+            try:
+                shutil.copyfile(os.path.join(root, filename), os.path.join(outpath, filename))
+            except Exception:
+                print 'ERROR ' + filename
 
 if __name__ == '__main__':
     try:
