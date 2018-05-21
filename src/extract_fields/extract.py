@@ -410,7 +410,7 @@ class CLExtractor(object):
                                     totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status='INVALID')
         else:
             status = 'SUCCESS' if (total0 > 0.0 and datetime0 != '') else 'INVALID'
-            extdata = ExtractedData(mallName=locs[1], storeName=locs[2], locationCode=locs[0], zipcode=locs[4], gstNo=locs[3], 
+            extdata = ExtractedData(mallName=locs[1], storeName=locs[2], locationCode=locs[0], zipcode=locs[3], gstNo=locs[4], 
                                     totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status=status)
         
         return extdata
