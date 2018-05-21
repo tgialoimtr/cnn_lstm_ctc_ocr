@@ -111,6 +111,7 @@ def ocrQueue(reader, num, states):
         m, rinfo = service.getReceiptInfo(logger=logger)
         if m is not None: # got message
             if rinfo is not None: # parse success
+                logger.info('message before parsed: %s', m.content)
                 logger.info('message after parsed: %s', rinfo.toString())
                 lp = service.getImage(rinfo.receiptBlobName, logger=logger)
                 if lp is not None:
