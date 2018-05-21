@@ -50,7 +50,8 @@ ALLMONEY = "(^|\D)(([1-9]\d*|0)\.\d\d)"
 GSTMONEY = "(^|\D)(\d\.([0-8]9|\d[1-8]|[1234678]0))"
 GSTMONEY0 = "(^|\D)(1\d\.([0-8]9|\d[1-8]|[1234678]0))"
 SVCMONEY = "(^|\D)(1?\d\.\d\d)"
-ID = r'[ ]?\w*?[ :\.#]{0,4}.*?([A-Z]{0,3}[0-9]+([-/][0-9]{1,6}([-/][0-9]+[A-Z]{0,3})?)?)'
+# ID = r'[ ]?\w*?[ :\.#]{0,4}.*?([A-Z]{0,3}[0-9]+([-/][0-9]{1,6}([-/][0-9]+[A-Z]{0,3})?)?)'
+ID = r'[ ]?\w*?[ :\.#]{0,4}.*?([A-Z0-9]{2,25}([-/][A-Z0-9]{1,8}([-/][0-9A-Z]{1,8})?)?)'
 
 def removeMatchFromLine(m, line):
     return line[:m[0]] + ' ' + line[m[0]+len(m[1]):]
@@ -110,10 +111,10 @@ class KWExtractor(object):
             if before == after: #not match yet
                 line, nextline = self._process(linenumber, kwtype, line, frompos, nextline, self.money0)
         if kwtype == 'receiptid':
-#             print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line+ '"')
+#             print(Fore.GREEN + 'trying ' + kwtype + ' for line "' + line+ '"' + Fore.RESET)
             pos, m = self.id.recognize(line[frompos:])
             if pos >= 0:
-#                 print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"')
+#                 print(Fore.GREEN + 'extracted-0 ' + m + ' as "' + kwtype + '"' + Fore.RESET)
                 self.values[kwtype].append((linenumber, m))
                 line = line[:frompos + pos] + ' ' + line[frompos + pos + len(m):]
         return line, nextline
@@ -121,14 +122,17 @@ class KWExtractor(object):
                 
 class KWDetector(object):
     def __init__(self):
-        self.types = {'total':['total', 'amount', 'payment', 'visa', 'master', 'amex', 'please pay', 'qualified amt', 'qualified amount', 'net', 'nets', 'due'],
+        self.types = {'total':['total', 'amount', 'payment', 'visa', 'master', 'amex', 'please pay', 'qualified amt', 'qualified amount', 'net', 'nets', 'due', 'ttl'],
                    'subtotal':['sub-total', 'subttl', 'payable'],
                    'cash':['cash', 'cash payment'],
                    'changedue':['change due', 'change', 'total change'],
                    'nottotal':['total pts', 'total savings', 'total qty', 'total quantity', 'total item', 'total number', 'total disc', 'qty total', 'total no.', 'total direct', 'total point'],
                    'gst':['gst 7', '7 gst', 'gst', 'inclusive', 'G.S.T.', 'includes'],
                    'servicecharge':['service charge', 'svr chrg', 'SVC CHG', 'SvCharge', 'Service Chg', 'service tax'],
-                   'receiptid':['receipt', 'rcpt', 'bill', 'chk', 'trans', 'order', 'counter', 'invoice', 'serial', 'check', 'tr:']
+                   'receiptid':['receipt', 'rcpt', 'bill', 'chk', 'trans', 'order', 'counter', 'invoice', 'serial', 'check',
+                                'tr:', 'inv', 'tran no' ,'trn', 'invoice no.', 'receipt nos', 'receipt no.', 'bill. no', 
+                                'rct', 'sales', 'sales no.', 'tax invoice', 'chk no.', 'inv no.', 'invoice number', 'trans number',
+                                'transaction']
                    }
         self.kwExtractor = KWExtractor()
         self.type_list = []
@@ -154,12 +158,12 @@ class KWDetector(object):
             reg += '(' + kw.capitalize() + '|' + kw.upper() + ')' + sep
         reg += ')($|\W)'
 #         print(reg + ' ' + str((len(rawkw)+2)/6))
-        return FuzzyRegexExtractor(reg, maxerr=(len(rawkw)+2)/6, caseSensitive=True)
+        return FuzzyRegexExtractor(reg, maxerr=(len(rawkw)+1)/5, caseSensitive=True)
         
     def detect(self, lines):
         self.kwExtractor.reset()
         for i, oriline in enumerate(lines):
-#             print(Fore.WHITE + oriline)
+#             print(Fore.BLACK + oriline + Fore.RESET)
             line = oriline
             kwtypes = []
             nextline = lines[i+1] if i < len(lines) - 1 else ''
@@ -167,7 +171,7 @@ class KWDetector(object):
                 pos, match = extr.recognize(line)
                 if pos >= 0:
                     line = removeMatchFromLine((pos, match), line)
-#                     print(Fore.BLUE + 'match ' + match +' as "' + kwtype + '", remaining "' + line+'"')
+#                     print(Fore.BLUE + 'match ' + match +' as "' + kwtype + '", remaining "' + line+'"' + Fore.RESET)
                     kwtypes.append(kwtype)
                     line, nextline = self.kwExtractor.extract(i, kwtype, line, pos , nextline)
 

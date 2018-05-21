@@ -64,12 +64,18 @@ HHMMSS = (r'(\s|^|\D)([012]?\d:[0-5]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M:%S"])
 HHMM = (r'(\s|^|\D)([012]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M"])
 
 SPECIALID1 = r'(\s|^|\D)(([012][0-9]|3[01])([012][0-9]|3[01])1[78] [0-9]{5} [0-9]{4}) [0-9]{2}:[0-9]{2}'
-SPECIALID2 = r'(\s|^|\D)([012]?\d|3[01])/([012]?\d|3[01])/201[78][ ]*[012]\d:[0-5]\d[ ]*([A-Z]{0,3}[0-9]+)'
+SPECIALID2 = r'(\s|^|\D)([012]?\d|3[01])/([012]?\d|3[01])/201[78][ ]*[012]\d:[0-5]\d[ ]*([:\w]{3,7}[ ])?[ ]*([A-Z][0-9]{6})'
+SPECIALID3 = r'(\s|^|\W)T(r:|#)(\d{2,12})'
 
 class ReceiptIdExtractor(object):
     def __init__(self):
-        self.s1 = FuzzyRegexExtractor(SPECIALID1, 2, maxerr=2, caseSensitive=False)
-        self.s2 = FuzzyRegexExtractor(SPECIALID2, 4, maxerr=2, caseSensitive=False)
+        self.s1 = FuzzyRegexExtractor(SPECIALID1, 2, maxerr=2, caseSensitive=True)
+        self.s2 = FuzzyRegexExtractor(SPECIALID2, 5, maxerr=2, caseSensitive=True)
+        self.s3 = FuzzyRegexExtractor(SPECIALID3, 3, maxerr=0, caseSensitive=True)
+        IDALL = r'[:#].*?([A-Z0-9]{2,25}([-/][A-Z0-9]{1,8}([-/][0-9A-Z]{1,8})?)?)'
+        IDALL2 = r'([A-Z0-9]{2,25}([-/][A-Z0-9]{1,8}([-/][0-9A-Z]{1,8})?)?)'
+        self.idall = RegexExtractor(IDALL, 1)
+        self.idall2 = RegexExtractor(IDALL2, 2)
     
     def mostPotential(self, idlist):
         if len(idlist) > 1:
@@ -77,7 +83,10 @@ class ReceiptIdExtractor(object):
             for receiptid in idlist:
                 if len(receiptid) > 2:
                     numdigit = sum([c.isdigit() for c in receiptid])
-                    sortedlist.append((1.0*numdigit/len(receiptid), receiptid))
+                    score = 1.0*numdigit/len(receiptid)
+                    if score > 0.8:
+                        score = 0.8 + 1.0*len(receiptid)/15
+                    sortedlist.append((score, receiptid))
             sortedlist.sort(reverse=True)
             if len(sortedlist) > 0:
                 return sortedlist[0][1]
@@ -97,12 +106,34 @@ class ReceiptIdExtractor(object):
             pos, m = self.s2.recognize(line)
             if pos >= 0:
                 return m
+        for line in lines:
+            pos, m = self.s3.recognize(line)
+            if pos >= 0:
+                return m
         ids0 = kwvalues['receiptid']
         ids0 = [x[1] for x in ids0 if x is not None]
         if len(ids0) > 0:
             return self.mostPotential(ids0)
         else:
-            return ''
+            newids = []
+            for line in lines:
+                if all(excl not in line for excl in ['GST', 'Reg', 'REG', 'UEN', 'BUS', '$', 'ROC', 'Tel', 'TEL', 'Fax', 'FAX']):
+                    pos, m = self.idall.recognize(line)
+                    if pos >= 0:
+                        newids.append(m)
+            if len(newids) > 0:
+                return self.mostPotential(newids)
+            else:
+                newids = []
+                for line in lines:
+                    if all(excl not in line for excl in ['GST', 'Reg', 'REG', 'UEN', 'BUS', '$', 'ROC', 'Tel', 'TEL', 'Fax', 'FAX']):
+                        pos, m = self.idall2.recognize(line)
+                        if pos >= 0:
+                            newids.append(m)
+                if len(newids) > 0:
+                    return self.mostPotential(newids)
+                else:
+                    return ''
         
 # import os, cv2        
 # def show(imgpath):
