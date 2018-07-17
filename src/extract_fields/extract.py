@@ -40,7 +40,7 @@ class LocodeExtractor(object):
         tempfilename = os.path.join(args.javapath, tempfilename)
         with open(tempfilename, 'w') as tempfile:
             for line in lines:
-                tempfile.write(line)
+                tempfile.write(line + ' ')
         
         rs = self.jarWrapper(tempfilename)
         #delete
