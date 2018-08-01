@@ -58,7 +58,7 @@ yyddmm_dot = (r'(\s|^|\D)((20)?1[78]\.([012]?\d|3[01])\.([012]?\d|3[01]))(\s|$|\
 yyddmm_none = (r'(\s|^|\D)((20)?1[78]([012]\d|3[01])([012]\d|3[01]))(\s|$|\D)', 2, ["%Y%m%d", "%Y%d%m", "%y%m%d", "%y%d%m"])
 ddmmyy_none = (r'(\s|^|\D)(([012]\d|3[01])([012]\d|3[01])(20)?1[78])(\s|$|\D)', 2, ["%m%d%Y", "%d%m%Y", "%m%d%y", "%d%m%y"])
 ddbbyy = (r'(\s|^|\D)(([012]?\d|3[01]) ' + month3 + '[\', ]{0,2}(20)?1[78])', 2, ["%d%b%y", "%d%b%Y"])
-bbddyy = (month3 + '[\', ]{0,2}([012]\d|3[01])[ ,]{0,2}(20)?1[78]', 0, ["%b%d%y", "%b%d%Y"])
+bbddyy = (r'(' + month3 + '[\', ]{0,2}([012]\d|3[01])[ ,]{1,2}(20)?1[78])($|[^:])', 1, ["%b%d%y", "%b%d%Y"])
 IIMMSS = (r'(\s|^|\D)([01]?\d:[0-5]?\d(:[0-5]\d)?[ ]?([AP]m|[AP]M|[ap]m))', 2, ["%I:%M:%S%p", "%I:%M%p"])
 HHMMSS = (r'(\s|^|\D)([012]?\d:[0-5]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M:%S"])
 HHMM = (r'(\s|^|\D)([012]?\d:[0-5]?\d)(\s|$|\D)', 2, ["%H:%M"])
@@ -375,10 +375,12 @@ class DateExtractor(object):
         sorted_time_cands = []
         for i, cand_t in time_cands:
             to_chosen_date =   min([abs(i - i_cd) for i_cd in choosen_date_lines])   
-            to_chosen_date = min(to_chosen_date, 2)
-            to_chosen_date = -to_chosen_date
+            if to_chosen_date > 1:
+                to_chosen_date = 1
+            else:
+                to_chosen_date = 0
             sorted_time_cands.append((to_chosen_date, cand_t))
-        sorted_time_cands.sort(reverse=True)
+        sorted_time_cands.sort(reverse=False)
         return datetime.combine(choosen_date, sorted_time_cands[0][1])
 
 class CLExtractor(object):
