@@ -357,6 +357,7 @@ class DateExtractor(object):
         for i, line in enumerate(lines):
 #             print(Fore.WHITE + line)
             line = self.charToNum(line)
+            temp_time = None
             for j, extr in enumerate(self.timeextrs):
                 pos, cand_t_str = extr.recognize(line)
                 if pos >=0:
@@ -369,7 +370,10 @@ class DateExtractor(object):
                         except Exception:
                             continue
 #                         print(Fore.RED + str(cand_t))
-                        time_cands.append((i,cand_t))
+                        if temp_time is None or cand_t >= temp_time:
+                            temp_time = cand_t
+            if temp_time is not None: 
+                time_cands.append((i,temp_time))
         if len(time_cands) == 0:
             return datetime.combine(choosen_date, time(0,0,0))
         sorted_time_cands = []
