@@ -102,7 +102,7 @@ try:
 except IOError:
     configlines = []
 
-topx00path = os.path.join(args.javapath, args.dbfile)
+#topx00path = os.path.join(args.javapath, args.dbfile)
     
 def nextImage(fn, show=False):
     lines = list(open(os.path.join(textspath, fn), 'r'))
@@ -149,12 +149,15 @@ def enter(name, value=None):
 if __name__ == '__main__':
     groupbypath = sys.argv[1]
     top600path = sys.argv[2]
+    topx00path = sys.argv[3]
     print(top600path)
     print(groupbypath)
+    print(topx00path)
     
     top600 = {}
     abc = []
     for i, line in enumerate(codecs.open(top600path, 'r', 'utf8')):
+        line = line.encode('ascii', 'ignore')
         temp = line.rstrip().split(',')
         top600[temp[0]] = {}
         top600[temp[0]]['name'] = temp[1]
