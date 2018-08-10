@@ -5,10 +5,10 @@ Created on Feb 12, 2018
 '''
 from __future__ import print_function
 import re, os
-import colorama
-from colorama import Fore
+#import colorama
+#from colorama import Fore
 # from fuzzywuzzy import fuzz
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from extractor import RegexExtractor, FuzzyRegexExtractor, KWDetector, ALLMONEY
 from common import args
 from subprocess import *
@@ -375,7 +375,7 @@ class DateExtractor(object):
             if temp_time is not None: 
                 time_cands.append((i,temp_time))
         if len(time_cands) == 0:
-            return datetime.combine(choosen_date, time(0,0,0))
+            return None
         sorted_time_cands = []
         for i, cand_t in time_cands:
             to_chosen_date =   min([abs(i - i_cd) for i_cd in choosen_date_lines])   
@@ -398,8 +398,15 @@ class CLExtractor(object):
     def extract(self, orilines, kwvalues=None):        
         lines = orilines[:]
         self.kwt.detect(lines)
+        locode0 = self.locode_extr.extract(orilines)
+        locs = locode0.split('=,=')
+        lines = orilines[:]
+        self.kwt.detect(lines)
         datetime0 = self.date_extr.extract(lines, self.kwt.kwExtractor.values)
         if datetime0 is not None:
+            if len(locs) == 5:
+                if 'CALT' not in locs[0] and 'SEMBAWANG' not in locs[1] and datetime0.hour < 10:
+                    datetime0 = datetime0  + timedelta(hours=12)
             datetime0 = datetime0.strftime('%Y-%m-%dT%H:%M:%SZ')
         else:
             datetime0=''
@@ -409,8 +416,6 @@ class CLExtractor(object):
         lines = orilines[:]
         self.kwt.detect(lines)
         rid0 = self.id_extr.extract(lines, self.kwt.kwExtractor.values)
-        locode0 = self.locode_extr.extract(orilines)
-        locs = locode0.split('=,=')
         if len(locs) < 5:
             extdata = ExtractedData(mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, 
                                     totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status='INVALID')

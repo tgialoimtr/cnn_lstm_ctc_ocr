@@ -8,8 +8,8 @@ from ctypes import cdll
 lib1 = cdll.LoadLibrary('/usr/local/lib/libtre.so.5')
 import tre
 import re
-import colorama
-from colorama import Fore
+#import colorama
+#from colorama import Fore
 
     
 class RegexExtractor(object):
