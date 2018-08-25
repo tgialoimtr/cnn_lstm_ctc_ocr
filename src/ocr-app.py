@@ -134,7 +134,7 @@ def ocrQueue(reader, num, states):
                             logger.info('%d, %s', states[num], outmsg)
                             service.pushMessage(b64encode(outmsg).decode('utf-8'), logger=logger) # Fix bug b64-encode type of Azure
                             service.deleteMessage(m, logger=logger)
-                            service.deleteImage(rinfo.receiptBlobName, logger=logger)
+                            #service.deleteImage(rinfo.receiptBlobName, logger=logger)
                             os.remove(lp)
                         except Exception:
                             logger.exception('Error when push message or cleanup.')
