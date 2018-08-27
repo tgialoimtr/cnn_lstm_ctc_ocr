@@ -253,7 +253,8 @@ def extract_line(image,linedesc,pad=5):
 class PagePredictor:
     def __init__(self, localserver, logger):
 #         self.lock = threading.Lock()
-        self.linepredictor = BatchLinePredictor(localserver, logger)
+        if localserver is not None:
+            self.linepredictor = BatchLinePredictor(localserver, logger)
     
     def ocrImage(self, imgpath, logger):
         tt=time.time()
@@ -268,8 +269,6 @@ class PagePredictor:
     
         rotM = cv2.getRotationMatrix2D((w/2,h/2),angle,1)
         img_grey = cv2.warpAffine(img_grey,rotM,(w,h))
-#         cv2.imshow('debug', img_grey)
-#         cv2.waitKey(-1)
         
         h,w = img_grey.shape
         img_grey = cv2.normalize(img_grey.astype(float32), None, 0.0, 0.999, cv2.NORM_MINMAX)
@@ -301,7 +300,6 @@ class PagePredictor:
     #         if args.debug>0: clf(); imshow(binary,vmin=0,vmax=1,cmap='gray'); ginput(1,-1) 
         seeds0 = compute_line_seeds(binary,bottom,top,scale)
         seeds,_ = morph.label(seeds0)
-        
         llabels = morph.propagate_labels(boxmap,seeds,conflict=0)
         spread = spread_labels(seeds,maxdist=scale)
         llabels = where(llabels>0,llabels,spread*binary)
@@ -316,10 +314,13 @@ class PagePredictor:
         location_text = []
         line_list = []
         bounds_list = []
+#         illubox = np.zeros_like(img_grey, dtype=np.uint8)
         for i,l in enumerate(lines):
             line = extract_line(img_grey,l,pad=args.pad)
 #             hihi, sau = calc_line(line)
             if not pre_check_line(line): continue
+#             cv2.rectangle(illubox, (l.bounds[1].start, l.bounds[0].start), 
+#                           (l.bounds[1].stop, l.bounds[0].stop), 1, 2)
             newwidth = int(32.0/line.shape[0] * line.shape[1])
             if newwidth < 32 or newwidth > 1000: continue
             line = cv2.resize(line, (newwidth, 32))
@@ -337,6 +338,10 @@ class PagePredictor:
 #             cv2.imwrite(directory+'/'+ str(i) + '_' + hihi +'_sau.JPG', sau*255)
 #                
 #         return 'hihi'
+#         image = transpose(array([seeds0, illubox, img_grey]),[1,2,0])
+#         directory='/tmp/temp_hope2/'+imgpath.split('/')[-1]
+#         cv2.imwrite(directory + '.jpg', (image*255).astype(np.uint8))
+#         return ''
         qualityCode = imgquality(line_list, bounds_list, logger)
         if len(line_list) == 0: raise ValueError('Image contains no contents.')
         batchname = datetime.datetime.now().isoformat()
@@ -388,13 +393,13 @@ class PagePredictor:
                     
 if __name__ == "__main__":
     import os
-    pp = PagePredictor('localhost:9000')
-    with open('/tmp/temp_hope/rs.txt', 'w') as rs:
+    pp = PagePredictor(None, None)
+    with open('/tmp/temp_hope2/rs.txt', 'w') as rs:
         for filename in os.listdir('/home/loitg/Downloads/complex-bg/'):        
             if filename[-3:].upper() == 'JPG':
                 
                 tt = time.time()
-                ret = pp.ocrImage('/home/loitg/Downloads/complex-bg/' + filename)
+                ret = pp.ocrImage('/home/loitg/Downloads/complex-bg/' + filename, None)
                 rs.write(filename + '----------------' + str(time.time() - tt) + '\n')
                 rs.write(ret+ '\n')
                 rs.flush()
