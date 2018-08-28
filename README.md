@@ -44,9 +44,22 @@ Use PYTHON 2.7, UBUNTU 16.04
     pip install -r requirements.txt
     python setup.py install
 
+### Install Tre from source
+    wget http://laurikari.net/tre/tre-0.8.0.tar.bz2
+    tar xjvf tre-0.8.0.tar.bz2
+    cd tre-0.8.0
+    ./configure
+    sudo make install
+    cd python
+    umask 022
+    sudo python setup.py install
+
+Copy /usr/local/lib/python2.7/dist-packages/tre.so and /usr/local/lib/python2.7/dist-packages/tre-0.8.0.egg-info to where python can find. Some machine cannot find modules inside /usr/local/lib/
 
 ### Install App's dependencies and and configuration:
 
+    pip install numpy matplot-lib lxml scipy scikit-image simplejson azure-storage-queue azure-storage-blob
+    pip install --upgrade tensorflow
     mkdir ~/workspace
     cd ~/workspace
     git clone https://github.com/tgialoimtr/cnn_lstm_ctc_ocr.git ocr-app
@@ -68,3 +81,4 @@ Use PYTHON 2.7, UBUNTU 16.04
     python ocr-app.py
 
 Check ./result.csv for result
+
