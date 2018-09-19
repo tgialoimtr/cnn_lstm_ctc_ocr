@@ -1,104 +1,84 @@
-# Overview
+Use PYTHON 2.7, UBUNTU 16.04
 
-This collection demonstrates how to construct and train a deep,
-bidirectional stacked LSTM using a CNN features as input with CTC loss
-to perform robust word recognition. The model is a straightforward
-adaptation of Shi et al.'s CRNN architecture
-([arXiv:1507.0571](https://arxiv.org/abs/1507.05717)). The provided code
-downloads and trains using Jaderberg et al.'s synthetic data ([IJCV
-2016](http://dx.doi.org/10.1007/s11263-015-0823-z)).
+### download opencv-3.2 and opencv_contrib-3.2:
 
-Developed for Tensorflow 1.1
+    mkdir ~/Downloads
+    cd ~/Downloads
+    wget -O opencv.zip https://github.com/opencv/opencv/archive/3.2.0.zip
+    unzip opencv.zip
+    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/3.2.0.zip
+    unzip opencv_contrib.zip
+### Install dependencies for opencv
+
+    sudo apt-get update
+    sudo apt-get install build-essential cmake pkg-config
+    sudo apt-get install libjpeg8-dev libtiff5-dev libjasper-dev libpng12-dev
+    sudo apt-get install libgtk-3-dev
+    sudo apt-get install libatlas-base-dev gfortran
+    sudo apt-get install python2.7-dev python3.5-dev
+
+### Build and install opencv
+
+    cd ~/Downloads/opencv-3.2.0/
+    mkdir build
+    cd build
+    pip install numpy
+    cmake -D CMAKE_BUILD_TYPE=RELEASE -D OPENCV_EXTRA_MODULES_PATH=~/Downloads/opencv_contrib-3.2.0/modules/ -D WITH_CUDA=OFF -D ENABLE_PRECOMPILED_HEADERS=OFF ..
+(Verify features to build: text, features_2d)
+
+(If build for python3, if build for java ?)
+
+    make -j4
+    sudo make install
+    sudo ldconfig
+    ln lib/cv2.so <PYTHON2 SITE PACKAGE>/cv2.so
+(Verify cv2: import cv2)
 
 
-# Structure
+### Install Ocropus library:
 
-The model as build is a hybrid of Shi et al.'s CRNN architecture
-(arXiv:1507.0571) and the VGG deep convnet, which reduces the number
-of parameters by stacking pairs of small 3x3 kernels. In addition, the
-pooling is also limited in the horizontal direction to preserve
-resolution for character recognition. There must be at least one
-horizontal element per character.
+    cd ~/Downloads
+    wget -O ocropus.zip https://github.com/tmbdev/ocropy/archive/v1.3.3.zip
+    unzip ocropus.zip
+    cd ocropy-1.3.3/
+    pip install -r requirements.txt
+    python setup.py install
 
-Assuming one starts with a 32x32 image, the dimensions at each level
-of filtering are as follows:
+### Install Tre from source
+    wget http://laurikari.net/tre/tre-0.8.0.tar.bz2
+    tar xjvf tre-0.8.0.tar.bz2
+    cd tre-0.8.0
+    ./configure
+    sudo make install
+    cd python
+    umask 022
+    sudo python setup.py install
+
+Copy /usr/local/lib/python2.7/dist-packages/tre.so and /usr/local/lib/python2.7/dist-packages/tre-0.8.0.egg-info to where python can find. Some machine cannot find modules inside /usr/local/lib/
+
+### Install App's dependencies and and configuration:
+
+    pip install numpy matplot-lib lxml scipy scikit-image simplejson azure-storage-queue azure-storage-blob
+    pip install --upgrade tensorflow
+    mkdir ~/workspace
+    cd ~/workspace
+    git clone https://github.com/tgialoimtr/cnn_lstm_ctc_ocr.git ocr-app
+    cd ocr-app/src
+    cp ../resources/common.py ./
 
 
-| Layer |  Op  | KrnSz | Stride(v,h) | OutDim |  H |  W  | PadOpt
-|:-----:|------|-------|:-----------:|--------|----|-----|--------------
-| 1     | Conv |   3   |   1         |   64   | 30 | 30  |    valid
-| 2     | Conv |   3   |   1         |   64   | 30 | 30  |    same
-|       | Pool |   2   |   2         |   64   | 15 | 15  | 
-| 3     | Conv |   3   |   1         |  128   | 15 | 15  |    same
-| 4     | Conv |   3   |   1         |  128   | 15 | 15  |    same
-|       | Pool |   2   |   2,1       |  128   |  7 | 14  |       
-| 5     | Conv |   3   |   1         |  256   |  7 | 14  |    same
-| 6     | Conv |   3   |   1         |  256   |  7 | 14  |    same
-|       | Pool |   2   |   2,1       |  256   |  3 | 13  |       
-| 7     | Conv |   3   |   1         |  512   |  3 | 13  |    same
-| 8     | Conv |   3   |   1         |  512   |  3 | 13  |    same
-|       | Pool |   3   |   3,1       |  512   |  1 | 13  |     
-| 9     | LSTM |       |             |  512   |    |     |              
-| 10    | LSTM |       |             |  512   |    |     |              
+### Edit configuration file src/common.py:
 
-To accelerate training, a batch normalization layer is included before
-each pooling layer and ReLU non-linearities are used throughout. Other
-model details should be easily identifiable in the code.
+1. args.imgsdir to folder containing receipt images 
+2. args.model_path to folder containing neural network model 
+3. args.java_path to ./resources
+4. args.mode to "process-local"
+5. args.logsdir and args.download_dir to some temporary folder
 
-The default training mechanism uses the ADAM optimizer with learning
-rate decay.
+### Run App:
 
-# Training
+    cd ~/workspace/ocr-app/src
+    python ocr-app.py
 
-To completely train the model, you will need to download the mjsynth
-dataset, pack it into sharded tensorflow records. Then you can start
-the training process, a tensorboard monitor, and an ongoing evaluation
-thread. The individual commands are packaged in the accompanying `Makefile`.
+Check ./result.csv for result
 
-    make mjsynth-download
-    make mjsynth-tfrecord
-    make train &
-    make monitor &
-    make test
-
-To monitor training, point your web browser to the url (e.g.,
-(http://127.0.1.1:8008)) given by the Tensorboard output.
-
-Note that it may take 4-12 hours to download the complete mjsynth data
-set. A very small set (0.1%) of packaged example data is included; to
-run the small demo, skip the first two lines involving `mjsynth`.
-
-With a Geforce GTX 1080, the demo takes about 20 minutes for the
-validation character error to reach 45% (using the default
-parameters); at one hour (roughly 7000 iterations), the validation
-error is just over 20%.
-
-With the full training data, by one million iterations the model
-typically converges to around 7% training character error and 35% word
-error, both varying by 2-5%.
-
-# Testing
-
-The test script streams statistics for small batches of validation (or test)
-data. It prints the iteration, test batch loss, label error (percentage of
-characters predicted incorrectly), and the sequence error (percentage of
-words--entire sequences--predicted incorrectly.)
-
-# Validation
-
-To see the output of a small set of instances, the script `validation.py` 
-allows you to load a model and read an image one at a time via the process's 
-standard input and print the decoded output for each. For example
-
-    cd src ; python validate.py < ~/paths_to_images.txt
-
-Alternatively, you can run the program interactively by typing image paths
-in the terminal (one per line, type Control-D when you want the model to run the
-input entered so far).
-
-# Configuration
-
-There are many command-line options to configure training
-parameters. Run `train.py` or `test.py` with the `--help` flag to see
-them or inspect the scripts. Model parameters are not command-line
-configurable and need to be edited in the code (see `model.py`).
