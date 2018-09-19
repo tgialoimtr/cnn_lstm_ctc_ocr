@@ -394,7 +394,6 @@ class CLExtractor(object):
     
     def createTimedID(self, locode, total, datetime):
         rawid = locode + datetime + "{0:.1f}".format(int(total*10)/10.0)
-        print(rawid)
         return "Approve-" + hashlib.md5(rawid).hexdigest()
     
     def extract(self, orilines, kwvalues=None):        

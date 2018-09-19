@@ -87,7 +87,7 @@ def ocrLocalPath(reader, num, states):
 if __name__ == "__main__":
     logger = createLogger('main')
     extractor = CLExtractor()
-    with open('/tmp/result.txt', 'a') as rawmsgof:
+    with open('./result.txt', 'a') as rawmsgof:
         i = 0
         for fn in os.listdir(args.textsdir):
             if fn[-3:].lower() != 'txt': continue
