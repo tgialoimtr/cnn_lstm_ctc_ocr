@@ -12,7 +12,7 @@ from datetime import datetime, date, time, timedelta
 from extractor import RegexExtractor, FuzzyRegexExtractor, KWDetector, ALLMONEY
 from common import args
 from subprocess import *
-import random
+import random, hashlib
 from common import args
 from inputoutput.receipt import ExtractedData
 
@@ -379,10 +379,7 @@ class DateExtractor(object):
         sorted_time_cands = []
         for i, cand_t in time_cands:
             to_chosen_date =   min([abs(i - i_cd) for i_cd in choosen_date_lines])   
-            if to_chosen_date > 1:
-                to_chosen_date = 1
-            else:
-                to_chosen_date = 0
+            to_chosen_date = min(to_chosen_date, 2)
             sorted_time_cands.append((to_chosen_date, cand_t))
         sorted_time_cands.sort(reverse=False)
         return datetime.combine(choosen_date, sorted_time_cands[0][1])
@@ -394,6 +391,10 @@ class CLExtractor(object):
         self.total_extr = TotalExtractor()
         self.id_extr = ReceiptIdExtractor()
         self.locode_extr = LocodeExtractor(args.dbfile, args.locationnjar)
+    
+    def createTimedID(self, locode, total, datetime):
+        rawid = locode + datetime + "{0:.1f}".format(int(total*10)/10.0)
+        return "Approve-" + hashlib.md5(rawid).hexdigest()
     
     def extract(self, orilines, kwvalues=None):        
         lines = orilines[:]
@@ -407,7 +408,9 @@ class CLExtractor(object):
             if len(locs) == 5:
                 if 'CALT' not in locs[0] and 'SEMBAWANG' not in locs[1] and datetime0.hour < 10:
                     datetime0 = datetime0  + timedelta(hours=12)
-            datetime0 = datetime0.strftime('%Y-%m-%dT%H:%M:%SZ')
+                if 'FAIRPRICE' in locs[2] and datetime0.second > 0:
+                    datetime0 = ''
+            if datetime0 != '': datetime0 = datetime0.strftime('%Y-%m-%dT%H:%M:%SZ')
         else:
             datetime0=''
         lines = orilines[:]
@@ -420,7 +423,11 @@ class CLExtractor(object):
             extdata = ExtractedData(mallName=None, storeName=None, locationCode=None, zipcode=None, gstNo=None, 
                                     totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status='INVALID')
         else:
-            status = 'SUCCESS' if (total0 > 0.0 and datetime0 != '') else 'INVALID'
+            if total0 > 0.0 and datetime0 != '':
+                status = 'SUCCESS'
+                rid0 = self.createTimedID(locs[0], total0, datetime0)
+            else:
+                status = 'INVALID'
             extdata = ExtractedData(mallName=locs[1], storeName=locs[2], locationCode=locs[0], zipcode=locs[3], gstNo=locs[4], 
                                     totalNumber=float(total0), receiptId=rid0, receiptDateTime=datetime0, status=status)
         

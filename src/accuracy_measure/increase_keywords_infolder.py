@@ -167,7 +167,7 @@ if __name__ == '__main__':
     topx00 = {}
     for line in open(topx00path, 'r'):
         temp = line.rstrip().split(',')
-        temp[1] = temp[1].split('_')[0]
+        #temp[1] = temp[1].split('_')[0]
         topx00[temp[1]] = {}
         topx00[temp[1]]['rank'] = temp[0]
         topx00[temp[1]]['code'] = temp[1]
