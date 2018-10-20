@@ -155,6 +155,13 @@ class Node(object):
 class SubLine(object):
     LOOKAHEAD = 2.5
     
+    class Config(object):
+        def __init__(self):
+            pass
+        
+        def add
+        
+    ###  <<<<<<<<<<<<<<<<------------------
     def __init__(self, initbound):
         height = initbound[0].stop - initbound[0].start
         x = (initbound[1].start + initbound[1].stop)/2
@@ -165,35 +172,62 @@ class SubLine(object):
 #         self.angel = DistVar(0,45)
 #         self.baseline
         self.curpos = bottom
-        
+        self.isnew = True
+    ###  ------------------>>>>>>>>>>>>>>>>>>
     
-    
-    def score(self, cand_next):
+    def score(self, conf):
         pass
 
-    def next(self, allnodes):
+    def nextRange(self):
         x1 = self.curpos[0]
         x2 = x1 + self.height * self.LOOKAHEAD
         for x in range(x1,x2):
             y = self.curpos[1]
             y1 = y - (x-x1); y2 = y + (x-x1)
             for y in range(y1,y2):
-                if allnodes[x][y] == None: continue
-                calc angle
-                add to angle bin
-                
-        nodes1 = self.nearNodes
-        for i in anglebin:
-            if bin not contains enough:
-                continue 
-            nodes1.append(anglebinnodes)
-            score1 = self.score(nodes1, nodes_in_bins, )
-            
-        if 
-        
-        
+                yield x, y
     
+    ###  <<<<<<<<<<<<<<<<------------------        
+    def suggest(self, allnodes, allpoints):
+        for x,y in self.nextRange():
+            if allnodes[x][y] == None: continue
+            calc angle
+            add to angle bin
+            
+        return [conf1, conf2]
+    ###  ------------------>>>>>>>>>>>>>>>>>>
+    
+    
+    def next(self, allnodes, allpoints):
+        confs = self.suggest(allnodes, allpoints)
+        results = []
+        for conf in confs:
+            score = self.score(conf)
 
+            results.append((score, conf))
+        
+        ### iterate results to select:
+        
+        conf to another subline
+        
+        
+    def draw(self, img):
+        pass
+    
+class Abc(object):
+    def __init__(self, img_grey, illu_scale):
+        self.img_grey = img_grey
+        self.illu = cv2.cvtColor(img_grey.astype(np.float32), cv2.COLOR_GRAY2BGR)
+        self.illu = cv2.resize(self.illu, None, fx=self.illu_scale, fy=self.illu_scale)
+        self.illu = (self.illu*255).astype(np.uint8)             
+
+    def drawLine(self, subline):
+        subline.param *= 2
+        subline.draw(self.illu)
+    
+    def getIllu(self):
+        return self.illu
+    
 def extractLines2(imgpath):
     img_grey = ocrolib.read_image_gray(imgpath)
     img_grey = img_grey[:img_grey.shape[0]/2,:]
@@ -208,39 +242,42 @@ def extractLines2(imgpath):
     h,w = img_grey.shape
     img_grey = cv2.normalize(img_grey.astype(float32), None, 0.0, 0.999, cv2.NORM_MINMAX)
     
+    illustrator = Abc(img_grey, 2.0)
     objects, scale = findBox(img_grey)
     
-    illu = cv2.cvtColor(img_grey.astype(np.float32), cv2.COLOR_GRAY2BGR)
-    illu = cv2.resize(illu, None, fx=2.0, fy=2.0)
-    illu = (illu*255).astype(np.uint8)
-    
     nodes = [[None for j in range(w)] for i in range(h)]
+    points = [[0 for j in range(w)] for i in range(h)]
     for bound in objects:
         top = ((bound[1].start + bound[1].stop)/2, bound[0].start)
         bottom = ((bound[1].start + bound[1].stop)/2, bound[0].stop)
+        points[bottom[0]][bottom[1]] = 1
+        points[top[0]][top[1]] = 1
         nodes[bottom[0]][bottom[1]] = Node(top, bottom, bound[0].stop - bound[0].start)
     
     allines = []
     
-    def move(subline, allnodes):
-        newsublines = subline.next(allnodes)
+    def move(subline, allnodes, allpoints):
+        newsublines = subline.next(allnodes, allpoints)
         if len(newsublines) > 0:
             for new in newsublines:
-                allines.appends(new)
-                move(new, allnodes)
+                if new.isnew: 
+                    allines.appends(new)
+                    new.isnew = False
+                move(new, allnodes, allpoints)
 
     for bound in objects:
         subline = SubLine(bound)
         allines.appends(subline)
-        move(subline, nodes)  
-            
-    return img_grey, illu
-   
+        subline.isnew = False
+        move(subline, nodes, points)
+    
+    for line in allines:
+        illustrator.draw(line)
+    
+    
+    return img_grey, illustrator.getIllu()
 
-class Param(object):
-    def __init__(self):
-        pass                  
-
+    
 import os
 if __name__ == "__main__":
     for filename in os.listdir('/home/loitg/Downloads/complex-bg/tmp/'):        
@@ -249,26 +286,4 @@ if __name__ == "__main__":
             img, illu = extractLines2('/home/loitg/Downloads/complex-bg/tmp/' + filename)
             cv2.imshow('illu', illu)
             cv2.waitKey(-1)
-                                   
-if __name__ == "__main__2":
-    for filename in os.listdir('/home/loitg/Downloads/complex-bg/tmp/'):        
-        if filename[-3:].upper() == 'JPG':
-            param = Param()
-            for k in np.linspace(0.02,0.22,3):
-                for w in range(15,56,3):
-                    param.k = k
-                    param.w = w
-                    print filename, k, w
-                    binary, img = extractLines('/home/loitg/Downloads/complex-bg/tmp/' + filename, param)
-                    img = img.astype(np.uint8)
-                    binary = binary.astype(np.uint8)
-                    cv2.imshow('line', img[:img.shape[0],:,:])
-                    cv2.imshow('bin', binary[:binary.shape[0],:])
-                    cv2.waitKey(-1)
-#                     suffix = '_'.join([filename, str(k), str(w)])
-#                     cv2.imwrite('/home/loitg/Downloads/complex-bg/java/'+suffix+'_img.bmp', img)
-#                     cv2.imwrite('/home/loitg/Downloads/complex-bg/java/'+suffix+'_bin.bmp', binary)
-
-
-
 
