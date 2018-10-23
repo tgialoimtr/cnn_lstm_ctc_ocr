@@ -17,7 +17,7 @@ import datetime
 from linepredictor import BatchLinePredictor
 from imgquality import imgquality
 from test_charboxfind import findBox
-import random
+import math
        
 class obj:
     def __init__(self):
@@ -154,13 +154,89 @@ class Node(object):
     
 class SubLine(object):
     LOOKAHEAD = 2.5
+    ISTOP = 2
+    ISBOT = 1
+    ISEMPTY = 0
+    INTERVALS = [0.2,0.3,0.5]
     
-    class Config(object):
-        def __init__(self):
-            pass
+    class Config1(object):
         
-        def add
+        MIN_INSIDER = 3
+        MAX_ABOVE = 2
+        MAX_OUTSIDER_RATIO = 0.2
         
+        def __init__(self, topy, boty, x):
+            # pre-set
+            self.atopy
+            self.aboty
+            self.ax
+            # post-set
+            self.angle
+            self.toppoints = []
+            self.botpoints = []
+            # others
+            height = float(self.aboty - self.atopy)
+            self.heightchkpts = []
+            self.heightchkpts.append(-height*(self.INTERVALS[0] + self.INTERVALS[1]))#int0
+            self.heightchkpts.append(-height*(self.INTERVALS[1]))#int1
+            self.heightchkpts.append(0.0)#int2
+            self.heightchkpts.append(self.INTERVALS[2] * height)#int3
+            self.heightchkpts.append(height - self.INTERVALS[2] * height)#int4
+            self.heightchkpts.append(height)#int5
+            self.heightchkpts.append(height + height*self.INTERVALS[1])#int6
+            self.heightchkpts.append(height + height*(self.INTERVALS[1] + self.INTERVALS[0]))#int7
+            self.intervals = [(self.heightchkpts[i], self.heightchkpts[i+1]) for i in range(0,7)] # 012--456
+            self.topsinintervals = [0] * len(self.intervals)
+            self.botsinintervals = [0] * len(self.intervals)
+            self.sin = {}; self.cos = {}
+            for a in self.angle_list:
+                self.sin[a] = math.sin(a/180.0*math.pi)
+                self.cos[a] = math.cos(a/180.0*math.pi)
+        
+        def add2intervals(self, y1, point_type):
+            for i, interval in enumerate(self.intervals):
+                if y1 >= interval[0] and y1 < interval[1]:
+                    if point_type == self.ISTOP:
+                        self.topsinintervals[i] += 1
+                    if point_type == self.ISBOT:
+                        self.botsinintervals[i] += 1
+        
+        def add(self, x,y, point_type):
+            if point_type == self.ISTOP:
+                self.toppoints.append((x,y))
+            elif point_type == self.ISBOT:
+                self.botpoints.append((x,y))
+            
+        def finalize(self):
+            MAX_ANGLE = 30.0
+            rets = []
+            for a in np.linspace(-MAX_ANGLE, MAX_ANGLE, 5):
+                for point in self.toppoints:
+                    x1 = point[0] - self.ax
+                    y1 = point[1] - self.atopy                    
+                    ytop_proj = y1 + x1 * self.sin[a] / self.cos[a]
+                    self.add2intervals(ytop_proj, SubLine.ISTOP)
+                for point in self.botpoints:
+                    x1 = point[0] - self.ax
+                    y1 = point[1] - self.atopy                    
+                    ybot_proj = y1 + x1 * self.sin[a] / self.cos[a]
+                    self.add2intervals(ybot_proj, SubLine.ISBOT)
+                top_in_0 = self.topsinintervals[0]
+                top_in_12 = self.topsinintervals[1] + self.topsinintervals[2]
+                bot_in_12 = self.botsinintervals[1] + self.botsinintervals[2]
+                top_in_45 = self.topsinintervals[4] + self.topsinintervals[5]
+                bot_in_45 = self.botsinintervals[4] + self.botsinintervals[5]
+                bot_in_6 = self.botsinintervals[6]
+                if (top_in_12 > self.MIN_INSIDER and top_in_0 < self.MAX_ABOVE and 1.0*bot_in_12/top_in_12 < self.MAX_OUTSIDER_RATIO) and \
+                    (bot_in_6 > self.MIN_INSIDER and bot_in_45 < self.MAX_ABOVE and 1.0*top_in_45/bot_in_45 < self.MAX_OUTSIDER_RATIO):
+                    conf = SubLine.Config1(self.atopy, self.aboty, self.ax)
+                    conf.angle = self.angle
+                    conf.toppoints = self.toppoints[:]
+                    conf.botpoints = self.botpoints[:]
+                    rets.append(conf)
+                
+            return rets
+                
     ###  <<<<<<<<<<<<<<<<------------------
     def __init__(self, initbound):
         height = initbound[0].stop - initbound[0].start
@@ -168,11 +244,23 @@ class SubLine(object):
         top = (x, initbound[0].start)
         bottom = (x, initbound[0].stop)
         self.nodes = [Node(top, bottom, height)]
-#         self.height = DistVar(height, height/2)
-#         self.angel = DistVar(0,45)
-#         self.baseline
         self.curpos = bottom
         self.isnew = True
+     
+    def suggest1(self, allnodes, allpoints):
+        # Generate config
+        allconfs = []
+        retconfs = []
+        for x,y in self.nextRange():
+            point_type = allpoints[x][y]
+            if point_type == self.ISEMPTY: continue
+            for cand_conf in allconfs:
+                cand_conf.add(x,y,point_type)
+        for cand_conf in allconfs:
+            confs = cand_conf.finalize()
+            if confs is not None and len(confs) > 0:
+                retconfs += confs
+        return retconfs
     ###  ------------------>>>>>>>>>>>>>>>>>>
     
     def score(self, conf):
@@ -186,20 +274,9 @@ class SubLine(object):
             y1 = y - (x-x1); y2 = y + (x-x1)
             for y in range(y1,y2):
                 yield x, y
-    
-    ###  <<<<<<<<<<<<<<<<------------------        
-    def suggest(self, allnodes, allpoints):
-        for x,y in self.nextRange():
-            if allnodes[x][y] == None: continue
-            calc angle
-            add to angle bin
-            
-        return [conf1, conf2]
-    ###  ------------------>>>>>>>>>>>>>>>>>>
-    
-    
+                
     def next(self, allnodes, allpoints):
-        confs = self.suggest(allnodes, allpoints)
+        confs = self.suggest1(allnodes, allpoints)
         results = []
         for conf in confs:
             score = self.score(conf)
@@ -246,12 +323,12 @@ def extractLines2(imgpath):
     objects, scale = findBox(img_grey)
     
     nodes = [[None for j in range(w)] for i in range(h)]
-    points = [[0 for j in range(w)] for i in range(h)]
+    points = [[SubLine.ISEMPTY for j in range(w)] for i in range(h)]
     for bound in objects:
         top = ((bound[1].start + bound[1].stop)/2, bound[0].start)
         bottom = ((bound[1].start + bound[1].stop)/2, bound[0].stop)
-        points[bottom[0]][bottom[1]] = 1
-        points[top[0]][top[1]] = 1
+        points[bottom[0]][bottom[1]] = SubLine.ISBOT
+        points[top[0]][top[1]] = SubLine.ISTOP
         nodes[bottom[0]][bottom[1]] = Node(top, bottom, bound[0].stop - bound[0].start)
     
     allines = []
