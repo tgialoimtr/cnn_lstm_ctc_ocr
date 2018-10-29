@@ -119,6 +119,23 @@ def pre_check_line(oriline):
         return False
     return True
 
+def linfit(xs, ys):
+    n = len(xs)
+    sumx = 0; sumy = 0; sumxy = 0; sumx2 = 0; sumy2 = 0; 
+    for i in range(n):
+        xi = xs[i]; yi = ys[i]
+        sumx += xi
+        sumy += yi
+        sumx2 += xi*xi
+        sumy2 += yi*yi
+        sumxy += xi*yi
+    denom = (n*sumx2 - sumx*sumx)
+    
+    b = (n*sumxy - sumx*sumy) / denom
+    m = (sumy*sumx2 - sumx*sumxy) /denom
+    s2e = (n*sumy2 - sumy*sumy - b*b*denom)
+    
+    return b,m,s2e
 
 class CandChar(object):
     def __init__(self, bound):

@@ -20,6 +20,23 @@ from test_charboxfind import findBox
 import math
 from statsmodels.nonparametric.smoothers_lowess import lowess
        
+
+def s(scale, a):
+    return int(scale*a)
+def v(scale, x,y):
+    return (int(scale*x), int(scale*y))
+
+def drawPoints(img, points, col=(255,255,255), scale=1.0):
+    for (x,y) in points:
+        cv2.circle(img,v(scale, x,y),3, col,-1)
+    return img
+
+def drawTBX(img, top, bot, x, col=(255,255,255), scale=1.0):
+    cv2.circle(img,v(scale, x,top),3, col,-1)
+    cv2.circle(img,v(scale, x,bot), 3, col,-1)
+    return img
+
+
 class obj:
     def __init__(self):
         pass
@@ -45,18 +62,6 @@ args.inputdir = '/root/ocrapp/tmp/cleanResult/'
 args.connect = 1
 args.noise = 8
 
-def rotate(image, angle):
-    M = cv2.getRotationMatrix2D((image.shape[1]/2, image.shape[0]/2), angle, 1.0)
-    dst = cv2.warpAffine(image, M, image.shape)
-    return dst
-def resizeToHeight(img, newheight):
-    newwidth = int(1.0*img.shape[1]/img.shape[0]*newheight)
-    newimg = cv2.resize(img, (newwidth, newheight))
-    return newimg
-def summarize(a):
-    b = a.ravel()
-    return len(b),[amin(b),mean(b),amax(b)], percentile(b, [0,20,40,60,80,100])
-   
 def sauvola(grayimg, w=51, k=0.2, scaledown=None, reverse=False):
     mask =None
     if scaledown is not None:
@@ -91,71 +96,12 @@ def estimate_skew_angle(image,angles):
     _,a = max(estimates)
     return a
 
-
-def calc_line(oriline):
-    line = sauvola(oriline,w=oriline.shape[0]/2, k=0.05, reverse=True)
-    oridense = '{:3.3f}'.format(mean(oriline))
-    dens = '{:3.3f}'.format(mean(line))
-#     rati = '{:3.3f}'.format(1.0*line.shape[1]/line.shape[0])
-    _,n = morph.label(line)
-    n = '{:3.3f}'.format(1.0*n/oriline.shape[1]*oriline.shape[0])
-    return dens+'_'+n+'_'+oridense, line
-
-def pre_check_line(oriline):
-    if oriline.shape[0] < 10:
-        return False
-    if 1.0*oriline.shape[1]/oriline.shape[0] < 1.28:
-        return False
-    if mean(oriline) < 0.35:
-        return False
-    if oriline.shape[0] > 25:
-        line = sauvola(oriline,w=oriline.shape[0]*3/4, k=0.05, reverse=True, scaledown=20.0/oriline.shape[0])
-    else:
-        line = sauvola(oriline,w=oriline.shape[0]*3/4, k=0.05, reverse=True)
-    if mean(line) < 0.15:
-        return False
-    _,n = morph.label(line)
-    n = 1.0*n/oriline.shape[1]*oriline.shape[0]
-    if n > 15:
-        return False
-    return True
-
-def linfit(xs, ys):
-    n = len(xs)
-    sumx = 0; sumy = 0; sumxy = 0; sumx2 = 0; sumy2 = 0; 
-    for i in range(n):
-        xi = xs[i]; yi = ys[i]
-        sumx += xi
-        sumy += yi
-        sumx2 += xi*xi
-        sumy2 += yi*yi
-        sumxy += xi*yi
-    denom = (n*sumx2 - sumx*sumx)
-    
-    b = (n*sumxy - sumx*sumy) / denom
-    m = (sumy*sumx2 - sumx*sumxy) /denom
-    s2e = (n*sumy2 - sumy*sumy - b*b*denom)
-    
-    return b,m,s2e
-
-
-class Node(object):
-    def __init__(self, *obj):
-        if len(obj) == 2:
-            pass
-        else:
-            pass
-        self.top
-        self.bottom
-        self.height
-    
 class SubLine(object):
     LOOKAHEAD = 2.5
     ISTOP = 2
     ISBOT = 1
     ISEMPTY = 0
     IGNORED = -1
-    INTERVALS = [0.2,0.3,0.5]
     LINE_IOU_COMBINE_THRESHOLD = 0.8
     LINE_SCORE_THRESHOLD = 0.5
     
@@ -163,15 +109,18 @@ class SubLine(object):
         
         MIN_INSIDER = 3
         MAX_ABOVE = 2
-        MAX_OUTSIDER_RATIO = 0.2
+        MAX_OUTSIDER_RATIO = 0.6
+        INTERVALS = [0.2,0.3,0.5]
+        MAX_ANGLE = 30.0
         
-        def __init__(self, topy, boty, x):
+        def __init__(self, topy, boty, x, img):
+            self.img = img
             # pre-set
-            self.atopy
-            self.aboty
-            self.ax
+            self.atopy=int(topy)
+            self.aboty=int(boty)
+            self.ax=int(x)
             # post-set
-            self.angle
+            self.angle = 0
             self.toppoints = []
             self.botpoints = []
             # others
@@ -186,19 +135,19 @@ class SubLine(object):
             self.heightchkpts.append(height + height*self.INTERVALS[1])#int6
             self.heightchkpts.append(height + height*(self.INTERVALS[1] + self.INTERVALS[0]))#int7
             self.intervals = [(self.heightchkpts[i], self.heightchkpts[i+1]) for i in range(0,7)] # 012--456
-            self.topsinintervals = [[]] * len(self.intervals)
-            self.botsinintervals = [[]] * len(self.intervals)
+            self.topsinintervals = [[] for i in range(len(self.intervals))]
+            self.botsinintervals = [[] for i in range(len(self.intervals))]
             self.sin = {}; self.cos = {}
-            for a in self.angle_list:
+            for a in np.linspace(-self.MAX_ANGLE, self.MAX_ANGLE, 5):
                 self.sin[a] = math.sin(a/180.0*math.pi)
                 self.cos[a] = math.cos(a/180.0*math.pi)
         
         def _add2intervals(self, y1, point, point_type):
             for i, interval in enumerate(self.intervals):
                 if y1 >= interval[0] and y1 < interval[1]:
-                    if point_type == self.ISTOP:
+                    if point_type == SubLine.ISTOP:
                         self.topsinintervals[i].append(point)
-                    if point_type == self.ISBOT:
+                    if point_type == SubLine.ISBOT:
                         self.botsinintervals[i].append(point)
         
         def _intervalHasLine(self):
@@ -208,62 +157,83 @@ class SubLine(object):
             top_in_45 = len(self.topsinintervals[4]) + len(self.topsinintervals[5])
             bot_in_45 = len(self.botsinintervals[4]) + len(self.botsinintervals[5])
             bot_in_6 = len(self.botsinintervals[6])
+            print 'top_in_0 ', top_in_0
+            print 'top_in_12 ', top_in_12
+            print 'bot_in_12 ', bot_in_12
+            print 'top_in_45 ', top_in_45
+            print 'bot_in_45 ', bot_in_45
+            print 'bot_in_6 ', bot_in_6
             if (top_in_12 > self.MIN_INSIDER and top_in_0 < self.MAX_ABOVE and 1.0*bot_in_12/top_in_12 < self.MAX_OUTSIDER_RATIO) and \
-                (bot_in_6 > self.MIN_INSIDER and bot_in_45 < self.MAX_ABOVE and 1.0*top_in_45/bot_in_45 < self.MAX_OUTSIDER_RATIO):
+                (bot_in_45 > self.MIN_INSIDER and bot_in_6 < self.MAX_ABOVE and 1.0*top_in_45/bot_in_45 < self.MAX_OUTSIDER_RATIO):
                 return True
             else:
                 return False
             
         def add(self, x,y, point_type):
-            if point_type == self.ISTOP:
+            if point_type == SubLine.ISTOP:
                 self.toppoints.append((x,y))
-            elif point_type == self.ISBOT:
+            elif point_type == SubLine.ISBOT:
                 self.botpoints.append((x,y))
             
         def finalize(self):
-            MAX_ANGLE = 30.0
+            print 'topcount ', len(self.toppoints)
+            print 'botcount ', len(self.botpoints)
             rets = []
-            for a in np.linspace(-MAX_ANGLE, MAX_ANGLE, 5):
-                self.topsinintervals = [[]] * len(self.intervals)
-                self.botsinintervals = [[]] * len(self.intervals)
+            for a in np.linspace(-self.MAX_ANGLE, self.MAX_ANGLE, 5):
+                self.topsinintervals = [[] for i in range(len(self.intervals))]
+                self.botsinintervals = [[] for i in range(len(self.intervals))]
                 for point in self.toppoints:
                     x1 = point[0] - self.ax
                     y1 = point[1] - self.atopy                    
                     ytop_proj = y1 + x1 * self.sin[a] / self.cos[a]
-                    self._add2intervals(ytop_proj, SubLine.ISTOP)
+                    self._add2intervals(ytop_proj, point, SubLine.ISTOP)
                 for point in self.botpoints:
                     x1 = point[0] - self.ax
                     y1 = point[1] - self.atopy                    
                     ybot_proj = y1 + x1 * self.sin[a] / self.cos[a]
-                    self._add2intervals(ybot_proj, SubLine.ISBOT)
+                    self._add2intervals(ybot_proj, point, SubLine.ISBOT)
+                
+                print 'angle ', a
+                print(list(enumerate(self.topsinintervals)))
+                print(list(enumerate(self.botsinintervals)))
+                
                 if self._intervalHasLine():
-                    conf = SubLine.Config1(self.atopy, self.aboty, self.ax)
-                    conf.angle = self.angle
+                    conf = SubLine.Config1(self.atopy, self.aboty, self.ax, self.img)
+                    conf.angle = a
                     conf.toppoints = self.topsinintervals[1] + self.topsinintervals[2]
                     conf.botpoints = self.botsinintervals[4] + self.botsinintervals[5]
                     rets.append(conf)
-                
+                    print 'HAS LINE'
+                else:
+                    print 'NO LINE'
+                    
+                img3 = self.img.copy()
+                drawTBX(img3, self.atopy, self.aboty, self.ax, (0,0,255))
+                drawPoints(img3, self.toppoints, (255,0,0))
+                drawPoints(img3, self.botpoints, (0,255,0))
+                cv2.imshow('kk', img3)
+                cv2.waitKey(-1)
             return rets
                 
     ###  <<<<<<<<<<<<<<<<------------------
     def __init__(self, topy, boty, x, tops=[], bottoms=[]):      
         self.tops = tops
         self.bottoms = bottoms
-        self.curtopy = topy
-        self.curboty = boty
+        self.curtopy = int(topy)
+        self.curboty = int(boty)
         self.height = boty-topy
-        self.curx = x
+        self.curx = int(x)
         self.isnew = True
         self.nextCount = 0
         self.lastytopindex = 0
         self.lastybotindex = 0
 
-    def _initConfig(self):
+    def _initConfig(self, img):
         possible_confs = []
         possx = self.curx
         posstop = self.curtopy
         possbot = self.curboty
-        possible_confs.append(SubLine.Config1(posstop, possbot, possx))
+        possible_confs.append(SubLine.Config1(posstop, possbot, possx, img))
 #         d = self.height/3
 #         possible_confs.append(SubLine.Config1(posstop+d, possbot+d, possx))
 #         possible_confs.append(SubLine.Config1(posstop-d, possbot-d, possx))
@@ -272,11 +242,13 @@ class SubLine(object):
 #         possible_confs.append(SubLine.Config1(posstop-d, possbot-d, possx + d))
         return possible_confs
     
-    def suggest1(self, allnodes, allpoints):
+    def suggest1(self, allnodes, allpoints, img):
         # Generate config
-        allconfs = self._initConfig()
+        allconfs = self._initConfig(img)
         retconfs = []
         for x,y in self.nextRange():
+            if x >= len(allpoints): continue
+            if y >= len(allpoints[x]): continue
             point_type = allpoints[x][y]
             if point_type == self.ISEMPTY: continue
             for cand_conf in allconfs:
@@ -284,7 +256,7 @@ class SubLine(object):
         for cand_conf in allconfs:
             confs = cand_conf.finalize()
             if confs is not None and len(confs) > 0:
-                retconfs += confs
+                retconfs += confs                
         return retconfs
     ###  ------------------>>>>>>>>>>>>>>>>>>
     
@@ -309,7 +281,7 @@ class SubLine(object):
 
     def nextRange(self):
         x1 = self.curx
-        x2 = x1 + self.height * self.LOOKAHEAD
+        x2 = x1 + int(self.height * self.LOOKAHEAD)
         for x in range(x1,x2):
             y = self.curboty
             y1 = y - (x-x1); y2 = y + (x-x1)
@@ -335,8 +307,8 @@ class SubLine(object):
                     results[j] = None
         return results
 
-    def next(self, allnodes, allpoints):
-        confs = self.suggest1(allnodes, allpoints)
+    def next(self, allnodes, allpoints, img):
+        confs = self.suggest1(allnodes, allpoints, img)
         results = []
         for conf in confs:
             score, confshape = self.score(conf)
@@ -374,6 +346,7 @@ class SubLine(object):
         
             for point in conf.toppoints: 
                 allpoints[point[0]][point[1]] = SubLine.IGNORED
+        return retlines
         
     def draw(self, img):
         pass
@@ -382,7 +355,7 @@ class Abc(object):
     def __init__(self, img_grey, illu_scale):
         self.img_grey = img_grey
         self.illu = cv2.cvtColor(img_grey.astype(np.float32), cv2.COLOR_GRAY2BGR)
-        self.illu = cv2.resize(self.illu, None, fx=self.illu_scale, fy=self.illu_scale)
+        self.illu = cv2.resize(self.illu, None, fx=illu_scale, fy=illu_scale)
         self.illu = (self.illu*255).astype(np.uint8)             
 
     def drawLine(self, subline):
@@ -403,25 +376,26 @@ def extractLines2(imgpath):
     rotM = cv2.getRotationMatrix2D((w/2,h/2),angle,1)
     img_grey = cv2.warpAffine(img_grey,rotM,(w,h))
     
-    h,w = img_grey.shape
     img_grey = cv2.normalize(img_grey.astype(float32), None, 0.0, 0.999, cv2.NORM_MINMAX)
-    
+
+    h,w = img_grey.shape
     illustrator = Abc(img_grey, 2.0)
     objects, scale = findBox(img_grey)
     
-    nodes = [[None for j in range(w)] for i in range(h)]
-    points = [[SubLine.ISEMPTY for j in range(w)] for i in range(h)]
+    img = (cv2.cvtColor(img_grey, cv2.COLOR_GRAY2BGR)*255).astype(np.uint8)
+    
+    nodes = None
+    points = [[SubLine.ISEMPTY for j in range(h+1)] for i in range(w+1)]
     for bound in objects:
         top = ((bound[1].start + bound[1].stop)/2, bound[0].start)
         bottom = ((bound[1].start + bound[1].stop)/2, bound[0].stop)
         points[bottom[0]][bottom[1]] = SubLine.ISBOT
         points[top[0]][top[1]] = SubLine.ISTOP
-        nodes[bottom[0]][bottom[1]] = Node(top, bottom, bound[0].stop - bound[0].start)
-    
+            
     allines = []
     
-    def move(subline, allnodes, allpoints):
-        newsublines = subline.next(allnodes, allpoints)
+    def move(subline, allnodes, allpoints,img):
+        newsublines = subline.next(allnodes, allpoints,img)
         if len(newsublines) > 0:
             for new in newsublines:
                 if new.isnew: 
@@ -429,19 +403,26 @@ def extractLines2(imgpath):
                     new.isnew = False
                 move(new, allnodes, allpoints)
 
+    illu = img.copy()
+    for bound in objects:
+        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),3, (255,0,0),-1)
+        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 3, (0,255,0),-1)
+        cv2.line(illu, ((bound[1].start + bound[1].stop)/2, bound[0].start), ((bound[1].start + bound[1].stop)/2, bound[0].stop), (0,0,50),2)
+    cv2.imshow('ii', illu)
+
     for bound in objects: # sorted
         subline = SubLine(topy=bound[0].start,
                           boty=bound[0].stop,
                           x=(bound[1].start + bound[1].stop)/2)
-        allines.appends(subline)
+        allines.append(subline)
         subline.isnew = False
-        move(subline, nodes, points)
+        move(subline, nodes, points,img)
     
-    for line in allines:
-        illustrator.draw(line)
+#     for line in allines:
+#         illustrator.draw(line)
     
     
-    return img_grey, illustrator.getIllu()
+    return img, illustrator.getIllu()
 
     
 import os
