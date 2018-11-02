@@ -123,6 +123,7 @@ class SubLine(object):
     IGNORED = -1
     LINE_IOU_COMBINE_THRESHOLD = 0.8
     LINE_SCORE_THRESHOLD = 0.1
+    NODE_IN_LINE_THRESHOLD = 0.5
     
     class Config1(object):
         
@@ -131,7 +132,6 @@ class SubLine(object):
         MAX_OUTSIDER_RATIO = 0.9
         INTERVALS = [0.2,0.5,0.5]
         MAX_ANGLE = 30.0
-        NODE_IN_LINE_THRESHOLD = 0.2
         
         def __init__(self, topy, boty, x, img):
             self.img = img
@@ -430,18 +430,26 @@ class SubLine(object):
 
         selected_confs = self._filterCombineConf(results)
         retlines = []
-        for i, (_, conf, confshape) in enumerate(selected_confs):
-            
-            img5 = img.copy()
-            drawPoints(img5, confshape, (255,0,255))
-            print self.id + ' final ' + str(self.nextCount)
-#             cv2.imshow('final', img5)
-#             cv2.waitKey(-1)
-            
+        for i, (_, conf, confshape) in enumerate(selected_confs):            
             topright = confshape[1]
             botright = confshape[2]
             topy = topright[1]; boty = botright[1]; 
             x = (topright[0] + botright[0])/2
+            
+            img5 = img.copy()
+            fordraw = SubLine(topy=topy,
+                              boty=boty,
+                              x=x,
+                              tops=self.tops + conf.toppoints,
+                              bottoms=self.bottoms + conf.botpoints)
+            fordraw.id = self.id
+            fordraw.draw(img5, (255,0,255), 0.5, True)
+            line = fordraw.extract(img5, 0.2)
+            print self.id + ' final ' + str(self.nextCount)
+            cv2.imshow('final', img5)
+            cv2.imshow('line', line)
+            cv2.waitKey(-1)
+            
             if i == len(selected_confs)-1:
                 self.curtopy = int(topy)
                 self.curboty = int(boty)
@@ -477,10 +485,14 @@ class SubLine(object):
         xs = xs[indices]
         ys = ys[indices]
         yhat = lowess(ys, xs, frac=0.666, is_sorted=False, return_sorted=False, delta=0.0)
-        f2 = interp1d(xs, yhat, kind='cubic')
+#         print xs
+#         print yhat
+        f2 = interp1d(xs, yhat, kind='linear')
         return f2
     
     def extractConstHeight(self, expand=0):
+        if len(self.tops) == 0 or len(self.bottoms) == 0:
+            return [],[],[]
         tops = np.array(self.tops)
         f_top = self.smoothedFunc(tops[:,0], tops[:,1])
         bottoms = np.array(self.bottoms)
@@ -495,11 +507,11 @@ class SubLine(object):
             heights.append(f_bot(x) - f_top(x))
         height = sum(heights)/len(heights)
         
-        f_combined = self.smoothedFunc(np.concatenate(tops[:,0], bottoms[:,0]), np.concatenate(tops[:,1]+height, bottoms[:,1]))
+        f_combined = self.smoothedFunc(np.concatenate([tops[:,0], bottoms[:,0]]), np.concatenate([tops[:,1]+height, bottoms[:,1]]))
         xs = list(range(x1,x4))
-        y_bot = [f_combined(x) for x in xs]
+        y_bot = [int(f_combined(x)) for x in xs]
+        height=int(height)
         y_top = [y - height for y in y_bot]
-        
         return xs, y_top, y_bot
 
     
@@ -508,32 +520,38 @@ class SubLine(object):
         self.id
         
         xs, y_top, y_bot = self.extractConstHeight()
-        
+        if len(xs) == 0: return
         temp = np.zeros_like(img)
         for i in range(len(xs)):
             temp[y_top[i]:y_bot[i],xs[i]] = col
         
-        cv2.addWeighted(img, 1-opacity, temp, opacity, img)
+        cv2.addWeighted(img, 1-opacity, temp, opacity, 0)
+        
         if drawyhat:
             drawPoints(img, zip(xs[::4], y_top[::4]), col)
             drawPoints(img, zip(xs[::4], y_bot[::4]), col)
 
         cv2.putText(img,self.id, (xs[0],y_bot[0]), cv2.FONT_HERSHEY_SIMPLEX, 2, col)
-        return temp
+        return img
         
     
     
     def extract(self, img, expand=0):
         xs, y_top, y_bot = self.extractConstHeight()
-        height = y_bot[0] - y_top[0]
         n = len(xs)
-        retline = np.zeros((height,n))
+        if n == 0: return
+        height = y_bot[0] - y_top[0]
+        if len(img.shape) > 2:
+            retline = np.zeros((height,n,3), dtype=np.uint8)
+        else:
+            retline = np.zeros((height,n), dtype=np.uint8)
         for i in range(n):
             retline[:,i] = img[y_top[i]:y_bot[i],xs[i]]
         return retline
         
     def clear(self, allnodes, clearedList):
         xs, y_top, y_bot = self.extractConstHeight()
+        if len(xs) == 0: return
         height = y_bot[0] - y_top[0]
         threshold = int(height*SubLine.NODE_IN_LINE_THRESHOLD)
         for i in range(len(xs)):
@@ -542,7 +560,7 @@ class SubLine(object):
                 node = allnodes[x][y]
                 if node is None:
                     pass
-                elif  y_top[i] - threshold < node[0] < y_top[i] + threshold:   
+                elif  y_top[i] - threshold <= node[0] < y_top[i] + threshold:  
                     clearedList.add(node)    
     
 class Abc(object):
@@ -634,7 +652,8 @@ def extractLines2(imgpath):
         topy = bound[0].start
         boty = bound[0].stop
         x = (bound[1].start + bound[1].stop)/2
-        if (topy, boty, x) in clearedList: continue
+        if (topy, boty, x) in clearedList: 
+            continue
         subline = SubLine(topy=topy,
                           boty=boty,
                           x=x)
@@ -642,8 +661,8 @@ def extractLines2(imgpath):
         subline.isnew = False
         move(subline, nodes, points,img)
     
-    for line in allines:
-        illustrator.draw(line)
+#     for line in allines:
+#         illustrator.draw(line)
     
     
     return img, illustrator.getIllu()
