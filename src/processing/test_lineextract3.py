@@ -18,9 +18,12 @@ from linepredictor import BatchLinePredictor
 from imgquality import imgquality
 from test_charboxfind import findBox
 import math
+import hashlib
+import colorsys
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from shapely.geometry import Polygon
 from scipy.interpolate import interp1d
+from sklearn.externals import joblib
 
 def s(scale, a):
     return int(scale*a)
@@ -127,7 +130,7 @@ class SubLine(object):
     
     class Config1(object):
         
-        MIN_INSIDER = 2
+        MIN_INSIDER = 3
         MAX_ABOVE_RATIO = 0.2
         MAX_OUTSIDER_RATIO = 0.9
         INTERVALS = [0.2,0.5,0.5]
@@ -180,8 +183,15 @@ class SubLine(object):
             print 'top_in_0 ', top_in_0, 'top_in_12 ', top_in_12, 'bot_in_12 ', bot_in_12, 'top_in_45 ', top_in_45, 'bot_in_45 ', bot_in_45, 'bot_in_6 ', bot_in_6
             print 'support ' + str(top_in_12) + ', constrast ' + str(np.float64(top_in_0)/top_in_12) + ', outlier ' + str(np.float64(bot_in_12)/top_in_12)
             print 'support ' + str(bot_in_45) + ', constrast ' + str(np.float64(bot_in_6)/bot_in_45) + ', outlier ' + str(np.float64(top_in_45)/bot_in_45)
-            if (top_in_12 > self.MIN_INSIDER and 1.0*top_in_0/top_in_12 < self.MAX_ABOVE_RATIO and 1.0*bot_in_12/top_in_12 < self.MAX_OUTSIDER_RATIO) and \
-                (bot_in_45 > self.MIN_INSIDER and 1.0*bot_in_6/bot_in_45 < self.MAX_ABOVE_RATIO and 1.0*top_in_45/bot_in_45 < self.MAX_OUTSIDER_RATIO):
+            
+            ### JKL Remove this
+            if top_in_12 > self.MIN_INSIDER and bot_in_45 > self.MIN_INSIDER:
+                return True
+            else:
+                return False
+            
+            if (top_in_12 >= self.MIN_INSIDER and 1.0*top_in_0/top_in_12 < self.MAX_ABOVE_RATIO and 1.0*bot_in_12/top_in_12 < self.MAX_OUTSIDER_RATIO) and \
+                (bot_in_45 >= self.MIN_INSIDER and 1.0*bot_in_6/bot_in_45 < self.MAX_ABOVE_RATIO and 1.0*top_in_45/bot_in_45 < self.MAX_OUTSIDER_RATIO):
                 return True
             else:
                 return False
@@ -196,13 +206,14 @@ class SubLine(object):
             print '------------'
             print 'topcount ', len(self.toppoints)
             print 'botcount ', len(self.botpoints)
-            img3 = self.img.copy()
-            drawTBX(img3, self.atopy, self.aboty, self.ax, (0,0,255))
+            ## JKL Uncomment this
+#             img3 = self.img.copy()
+#             drawTBX(img3, self.atopy, self.aboty, self.ax, (0,0,255))
 
 
             rets = []
             for a in np.linspace(-self.MAX_ANGLE, self.MAX_ANGLE, 9):
-                img4 = img3.copy()
+#                 img4 = img3.copy()
                 self.topsinintervals = [[] for i in range(len(self.intervals))]
                 self.botsinintervals = [[] for i in range(len(self.intervals))]
                 for point in self.toppoints:
@@ -225,22 +236,21 @@ class SubLine(object):
                     conf.botpoints = self.botsinintervals[4] + self.botsinintervals[5]
                     rets.append(conf)
                     print 'HAS LINE'
+                    ## JKL remove this
+                    conf.topsinintervals = self.topsinintervals
+                    conf.botsinintervals = self.botsinintervals
+                    ## JKL Uncomment this
 #                     drawPoints(img4, conf.toppoints, (255,0,0))
 #                     drawPoints(img4, conf.botpoints, (0,255,0))
-#                     cv2.imshow('hasline', img4)
+#                     cv2.imshow('hasline'+str(conf.angle), img4)
 #                     cv2.waitKey(-1)
                 else:
                     print 'NO LINE'
-#                     drawPoints(img4, self.toppoints, (255,0,0))
-#                     drawPoints(img4, self.botpoints, (0,255,0))
-                    
-#                 cv2.imshow('conf', img4)
-#                 cv2.waitKey(-1)
             
             return rets
                 
     ###  <<<<<<<<<<<<<<<<------------------
-    def __init__(self, topy, boty, x, tops=[], bottoms=[]):      
+    def __init__(self, topy, boty, x, tops=[], bottoms=[], lemodel=None):      
         self.tops = tops
         self.bottoms = bottoms
         self.curtopy = int(topy)
@@ -252,6 +262,7 @@ class SubLine(object):
         self.id = str(self.curboty) + '.' + str(self.curx)
         self.lastytopindex = 0
         self.lastybotindex = 0
+        self.lemodel = lemodel
 
     def _initConfig(self, img):
         possible_confs = []
@@ -285,6 +296,17 @@ class SubLine(object):
         return retconfs
     ###  ------------------>>>>>>>>>>>>>>>>>>
     
+    def _uniformScore(self, xs):
+        N = len(xs)
+        if N < 3:
+            return 0.0
+        else:
+            L = max(xs) - min(xs)
+            ds = [xs[i+1] - xs[i] for i in range(0,N-1)]
+            a = 1.0*L/(N-1)
+            b = np.median(ds)
+            return abs(a-b)/a
+    
     def _score(self, lefts, rights, fromindexleft=0):
         if lefts is not None and len(lefts) > 0:
             lefts = np.array(lefts)
@@ -306,7 +328,8 @@ class SubLine(object):
         b,m,error = linfit(xs,ys)
         leftmostpoint = (xs[0], xs[0]*b+m)
         rightmostpoint = (xs[-1], xs[-1]*b+m)
-        return error, leftmostpoint, rightmostpoint
+        uniformity = self._uniformScore(xs)
+        return error, leftmostpoint, rightmostpoint, uniformity
     
     def _intervalScore(self, leftpoint, rightpoint, height, allpoints, linetype):
         int0 = int((SubLine.Config1.INTERVALS[0] + SubLine.Config1.INTERVALS[1])*height)
@@ -343,15 +366,15 @@ class SubLine(object):
                         correct_inner += 1
                     elif allpoints[x][yy] == SubLine.ISTOP:
                         wrong_inner += 1
-        print 'wrong_above ', wrong_above
-        print 'wrong_inner', wrong_inner
-        print 'correct_inner',correct_inner
+        print 'wrong_above ' + str(wrong_above) + ' wrong_inner ' + str(wrong_inner) + ' support ' + str(correct_inner) + ' constrast ' + str(np.float(wrong_above)/correct_inner) + \
+                    ' outlier ' + str(np.float(wrong_inner)/correct_inner)
+        
         return 1.0*wrong_above/(correct_inner+0.1), 1.0*wrong_inner/(correct_inner+0.1)
         
     def score(self, conf, allpoints):
-        toperror, topleftpoint, toprightpoint = self._score(self.tops, conf.toppoints, self.lastytopindex)
+        toperror, topleftpoint, toprightpoint, topuniform = self._score(self.tops, conf.toppoints, self.lastytopindex)
         topabove, topoutlier = self._intervalScore(topleftpoint, toprightpoint, self.height, allpoints, SubLine.ISTOP)
-        boterror, botleftpoint, botrightpoint = self._score(self.bottoms, conf.botpoints, self.lastybotindex)
+        boterror, botleftpoint, botrightpoint, botuniform = self._score(self.bottoms, conf.botpoints, self.lastybotindex)
         botbelow, botoutlier = self._intervalScore(botleftpoint, botrightpoint, self.height, allpoints, SubLine.ISBOT)
         
         ## how to combine multiple features to one score
@@ -364,7 +387,8 @@ class SubLine(object):
         xright = (toprightpoint[0] + botrightpoint[0])/2
         topyright = toprightpoint[1]
         botyright = botrightpoint[1]
-        return retScore, [(xleft, topyleft), (xright, topyright), (xright, botyright), (xleft, botyleft)], [toperror/self.height, topabove, topoutlier,boterror/self.height,botbelow, botoutlier]
+        return retScore, [(xleft, topyleft), (xright, topyright), (xright, botyright), (xleft, botyleft)], [toperror/self.height, topabove, topoutlier, topuniform, \
+                                                                                                            boterror/self.height,botbelow, botoutlier, botuniform]
 #         return retScore, [topleft, topright, botright, botleft]
 
     def nextRange(self):
@@ -390,9 +414,33 @@ class SubLine(object):
             return 1.0
         return 1.0*i/o
     
+    
+    
+    def _filterCombineConf2(self, results):
+        results2 = []
+        state = 'add'
+        for result in results:
+            fullscore, conf, confshape = result
+            isLine, width, angle = self.lemodel.predict(confshape, fullscore)
+            if isLine:
+                if state == 'add':
+                    results2.append((conf, width, confshape))
+                    state = 'update'
+                elif state == 'update':
+                    lastconfwidth = results2[-1][1]
+                    if width > lastconfwidth:
+                        results2[-1] = (conf, width, confshape)
+            else:
+                state = 'add'
+            
+        return [(x[1],x[0],x[2]) for x in results2]
+            
+        
+    
     def _filterCombineConf(self, results):
         n = len(results)
         if len(results) > 0: print 'a1 ' + str([result[0] for result in results])
+        
         for i in range(0, n):
             for j in range(i+1, n):
                 if results[i] is None or results[j] is None: continue
@@ -406,9 +454,6 @@ class SubLine(object):
         results2 = [x for x in results if x is not None]
         del(results)
         results2.sort()
-        
-        
-        
         if len(results2) > 0: 
             print 'a2 ' + str([result[0] for result in results2])
         
@@ -420,35 +465,39 @@ class SubLine(object):
         confs = self.suggest1(allnodes, allpoints, img)
         results = []
         for conf in confs:
-            score, confshape, fullscore = self.score(conf, allpoints)
-            results.append((score, conf, confshape))
-            img4 = img.copy()
-            drawPoints(img4, confshape, (0,255,255))
+            try:
+                score, confshape, fullscore = self.score(conf, allpoints)
+                results.append((fullscore, conf, confshape))
+            except Exception as e:
+                print e
+                pass
+#             img4 = img.copy()
+#             drawPoints(img4, confshape, (0,255,255))
             print self.id + ' score ' + str(conf.angle) + ' ' + str(fullscore)
-#             cv2.imshow('hasline', img4)
+#             cv2.imshow('hasline' + str(conf.angle), img4)
 #             cv2.waitKey(-1)
 
-        selected_confs = self._filterCombineConf(results)
+        selected_confs = self._filterCombineConf2(results)
+        print 'JFOIDSJFOSDJFPFDSJF ' + str(len(selected_confs))
         retlines = []
-        for i, (_, conf, confshape) in enumerate(selected_confs):            
+        for i, (_, conf, confshape) in enumerate(selected_confs):          
             topright = confshape[1]
             botright = confshape[2]
             topy = topright[1]; boty = botright[1]; 
-            x = (topright[0] + botright[0])/2
+            x = min(topright[0], botright[0])
             
-            img5 = img.copy()
-            fordraw = SubLine(topy=topy,
-                              boty=boty,
-                              x=x,
-                              tops=self.tops + conf.toppoints,
-                              bottoms=self.bottoms + conf.botpoints)
-            fordraw.id = self.id
-            fordraw.draw(img5, (255,0,255), 0.5, True)
-            line = fordraw.extract(img5, 0.2)
+#             img5 = img.copy()
+#             fordraw = SubLine(topy=topy,
+#                               boty=boty,
+#                               x=x,
+#                               tops=self.tops + conf.toppoints,
+#                               bottoms=self.bottoms + conf.botpoints,
+#                               lemodel=self.lemodel)
+#             fordraw.id = self.id
+#             fordraw.draw(img5, (255,0,255), 0.5, True)
             print self.id + ' final ' + str(self.nextCount)
-            cv2.imshow('final', img5)
-            cv2.imshow('line', line)
-            cv2.waitKey(-1)
+#             cv2.imshow('final', img5)
+#             cv2.waitKey(-1)
             
             if i == len(selected_confs)-1:
                 self.curtopy = int(topy)
@@ -465,7 +514,8 @@ class SubLine(object):
                                   boty=boty,
                                   x=x,
                                   tops=self.tops + conf.toppoints,
-                                  bottoms=self.bottoms + conf.botpoints)
+                                  bottoms=self.bottoms + conf.botpoints,
+                                  lemodel=self.lemodel)
                 another.lastytopindex = len(self.tops)
                 another.lastybotindex = len(self.bottoms)  
                 another.isnew = True
@@ -508,7 +558,7 @@ class SubLine(object):
         height = sum(heights)/len(heights)
         
         f_combined = self.smoothedFunc(np.concatenate([tops[:,0], bottoms[:,0]]), np.concatenate([tops[:,1]+height, bottoms[:,1]]))
-        xs = list(range(x1,x4))
+        xs = list(range(x2,x3))
         y_bot = [int(f_combined(x)) for x in xs]
         height=int(height)
         y_top = [y - height for y in y_bot]
@@ -516,22 +566,17 @@ class SubLine(object):
 
     
     def draw(self, img, col, opacity, drawyhat=True):
-        self.nextCount
-        self.id
-        
         xs, y_top, y_bot = self.extractConstHeight()
         if len(xs) == 0: return
-        temp = np.zeros_like(img)
+        temp = img.copy()
         for i in range(len(xs)):
             temp[y_top[i]:y_bot[i],xs[i]] = col
-        
-        cv2.addWeighted(img, 1-opacity, temp, opacity, 0)
-        
+        cv2.addWeighted(img, 1-opacity, temp, opacity, gamma=0, dst=img)
         if drawyhat:
             drawPoints(img, zip(xs[::4], y_top[::4]), col)
             drawPoints(img, zip(xs[::4], y_bot[::4]), col)
 
-        cv2.putText(img,self.id, (xs[0],y_bot[0]), cv2.FONT_HERSHEY_SIMPLEX, 2, col)
+#         cv2.putText(img,self.id, (xs[0],y_top[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col)
         return img
         
     
@@ -556,27 +601,58 @@ class SubLine(object):
         threshold = int(height*SubLine.NODE_IN_LINE_THRESHOLD)
         for i in range(len(xs)):
             x = xs[i]
+            if x >= len(allnodes): continue
             for y in range(y_bot[i] - threshold, y_bot[i] + threshold):
+                if y >= len(allnodes[x]) or allnodes[x][y] is None: continue
                 node = allnodes[x][y]
-                if node is None:
-                    pass
-                elif  y_top[i] - threshold <= node[0] < y_top[i] + threshold:  
+                if  y_top[i] - threshold <= node[0] < y_top[i] + threshold:  
                     clearedList.add(node)    
-    
-class Abc(object):
-    def __init__(self, img_grey, illu_scale):
-        self.img_grey = img_grey
-        self.illu = cv2.cvtColor(img_grey.astype(np.float32), cv2.COLOR_GRAY2BGR)
-        self.illu = cv2.resize(self.illu, None, fx=illu_scale, fy=illu_scale)
-        self.illu = (self.illu*255).astype(np.uint8)             
 
-    def drawLine(self, subline):
-        subline.param *= 2
-        subline.draw(self.illu)
     
-    def getIllu(self):
-        return self.illu
-    
+class LeModelChooseLine(object):
+    def __init__(self, modelpath, clf_type='SVM'):
+        self.clf = joblib.load(modelpath)   
+
+    def predict(self, confshape, fullscore):
+        topleft = confshape[0]
+        topright = confshape[1]
+        botright = confshape[2]
+        botleft = confshape[3]
+        
+        topy = topright[1]; boty = botright[1]; 
+        x = (topright[0] + botright[0])/2; assert(topright[0] == botright[0])
+        xleft = (topleft[0] + botleft[0])/2;
+        yleft_bot = botleft[1]
+        height = boty - topy
+        width = x - xleft
+        tanangle = (boty - yleft_bot)/(x - xleft)
+        angle = math.atan2((boty - yleft_bot), (x - xleft))/math.pi*180.0
+        features = [1.0*height/width, abs(tanangle)] + fullscore
+        if np.isnan(features).any() or width < 1:
+            return False, 0,0
+        else:
+            print features
+            features = np.array(features).reshape(1,len(features))
+            try:
+                result = self.clf.predict(features)
+            except Exception as e:
+                return False, 0,0
+            return (result[0] > 0.5), 1.0*width/height, angle
+
+def str2col(s):
+    m = hashlib.md5()
+    m.update(s.encode())
+    byte_digest = m.digest()
+    first_num = float(ord(byte_digest[0]))   # get int value of first character 0-255
+    second_num = float(ord(byte_digest[1]))   # get int value of second character 0-255
+    hue = first_num / 255  # hue as percentage
+    variation = second_num / 255 / 2 - 0.25  # add some limited randomness to saturation and brightness
+    saturation = min(0.8 + variation, 1.0)  # will vary from 0.55 to 1.0
+    brightness = min(0.7 + variation, 1.0)  # will vary from 0.45 to 0.95
+    color = colorsys.hsv_to_rgb(hue, saturation, brightness)
+    color = tuple(int(i * 255) for i in color)
+    return color
+      
 def extractLines2(imgpath):
     img_grey = ocrolib.read_image_gray(imgpath)
     
@@ -592,8 +668,8 @@ def extractLines2(imgpath):
     objects, scale = findBox(img_grey)
     
     ######### convert
-    xfrom=100; xto=500;
-    yfrom=800; yto=1080;
+    xfrom=0; xto=img_grey.shape[1];
+    yfrom=0; yto=min(img_grey.shape[0], 800);
     img_grey = img_grey[yfrom:yto, xfrom:xto]
     objects2 = []
     for obj in objects:
@@ -607,8 +683,7 @@ def extractLines2(imgpath):
     objects = objects2
     
     ######### end convert
-    
-    illustrator = Abc(img_grey, 2.0)
+
     h,w = img_grey.shape
     img = (cv2.cvtColor(img_grey, cv2.COLOR_GRAY2BGR)*255).astype(np.uint8)
     
@@ -629,6 +704,8 @@ def extractLines2(imgpath):
             
     allines = []
     
+    lemodel = LeModelChooseLine('/home/loitg/Downloads/complex-bg/le_model.pkl')
+    
     def move(subline, allnodes, allpoints,img):
         newsublines = subline.next(allnodes, allpoints,img)
         if len(newsublines) > 0:
@@ -641,12 +718,12 @@ def extractLines2(imgpath):
         else:
             subline.clear(allnodes, clearedList)
 
-    illu = img.copy()
-    for bound in objects:
-        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),2, (255,0,0),-1)
-        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 2, (0,255,0),-1)
-        cv2.line(illu, ((bound[1].start + bound[1].stop)/2, bound[0].start), ((bound[1].start + bound[1].stop)/2, bound[0].stop), (0,0,255),1)
-    cv2.imshow('ii', illu)
+#     illu = img.copy()
+#     for bound in objects:
+#         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),2, (255,0,0),-1)
+#         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 2, (0,255,0),-1)
+#         cv2.line(illu, ((bound[1].start + bound[1].stop)/2, bound[0].start), ((bound[1].start + bound[1].stop)/2, bound[0].stop), (0,0,255),1)
+#     cv2.imshow('ii', illu)
 
     for bound in objects: # sorted
         topy = bound[0].start
@@ -656,25 +733,31 @@ def extractLines2(imgpath):
             continue
         subline = SubLine(topy=topy,
                           boty=boty,
-                          x=x)
+                          x=x,
+                          lemodel=lemodel)
         allines.append(subline)
         subline.isnew = False
         move(subline, nodes, points,img)
     
+    ### illustrate
+#     img2 = img.copy()
 #     for line in allines:
-#         illustrator.draw(line)
+#         col = str2col(line.id)
+#         line.draw(img2, col, 0.5, drawyhat=False)
+    
+#     cv2.imshow('lines', img2)
+#     cv2.waitKey(-1)
     
     
-    return img, illustrator.getIllu()
+    return None
 
     
-import os
+import random
 if __name__ == "__main__":
-    for filename in os.listdir('/home/loitg/Downloads/complex-bg/tmp/'):        
+    filelist = list(os.listdir('/home/loitg/Downloads/complex-bg/java/'))
+    random.shuffle(filelist)
+    for filename in filelist:        
 #         if filename[-3:].upper() == 'JPG':
-        if filename == '34.JPG':
+        if filename == '19a.JPG':
             print filename
-            img, illu = extractLines2('/home/loitg/Downloads/complex-bg/tmp/' + filename)
-            cv2.imshow('illu', illu)
-            cv2.waitKey(-1)
-
+            extractLines2('/home/loitg/Downloads/complex-bg/java/' + filename)
