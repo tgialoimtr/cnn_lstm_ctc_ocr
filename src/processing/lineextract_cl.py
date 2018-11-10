@@ -206,27 +206,27 @@ def buildModel1(data):
             print "--=====" + str(score)
     
     clfs[0].fit(X,y)
-    joblib.dump(clfs[0], '/home/loitg/Downloads/complex-bg/le_model.pkl')
+    joblib.dump(clfs[0], '/home/loitg/Downloads/complex-bg/le_model_2.pkl')
 
-le_cls_data_path = '/home/loitg/Downloads/complex-bg/le_cls_data.csv'
+le_cls_data_path = '/home/loitg/Downloads/complex-bg/le_cls_data_2.csv'
 
-if __name__ == "__main__":
-    data = readData(le_cls_data_path)
-    data = data[~np.isnan(data).any(axis=1)]
-    buildModel1(data)
-    
-    
-    sys.exit(0)
+# if __name__ == "__main__":
+#     data = readData(le_cls_data_path)
+#     data = data[~np.isnan(data).any(axis=1)]
+#     buildModel1(data)
+#     
+#     
+#     sys.exit(0)
 
 if __name__ == "__main__":
     gtdatafile = open(le_cls_data_path, 'w')
-    for filename in os.listdir('/home/loitg/Downloads/complex-bg/java/'):
+    for filename in os.listdir('/home/loitg/Downloads/complex-bg/special_line/'):
         if filename[-3:].upper() == 'JPG':
 #         if filename == "4.JPG":
             print filename
 #             print dir(random)
 #             sys.exit(0)
-            buildLineRecogData('/home/loitg/Downloads/complex-bg/java/' + filename, gtdatafile)
+            buildLineRecogData('/home/loitg/Downloads/complex-bg/special_line/' + filename, gtdatafile)
             
             
             
