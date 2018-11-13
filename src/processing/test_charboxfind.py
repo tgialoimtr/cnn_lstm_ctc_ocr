@@ -176,7 +176,7 @@ def sauvolatree(img_grey):
     bins = {}
     previousid = -1
     scalelist = []
-    for layerid, k in enumerate(np.linspace(0.01,0.52,25)):
+    for layerid, k in enumerate(np.linspace(0.01,0.52,10)):
         print 'at ', layerid, k
         binary = sauvola(img_grey, w=30, k=k, scaledown=0.2, reverse=True)
         bins[layerid] = binary
@@ -185,8 +185,6 @@ def sauvolatree(img_grey):
         labels[layerid] = label
         objects = measurements.find_objects(label)
         print 'creating ', n, ' nodes'
-        illu = cv2.cvtColor(binary*255, cv2.COLOR_GRAY2BGR)
-        illu = cv2.resize(illu, None, fx=6.0, fy=6.0)
         tt = time()
         for i in range(n):
             stree.createNode((layerid, i+1), area=0, bound=objects[i], mask=None) #((label==(i+1))[objects[i]]).astype(np.uint8))
@@ -326,8 +324,8 @@ def findBox(img):
             
             
 if __name__ == "__main__":
+#     imgpath = '/home/loitg/Downloads/complex-bg/special_line/'
     imgpath = '/home/loitg/Downloads/complex-bg/tmp/'
-#     imgpath = '/home/loitg/Downloads/cmnd_data/temp/'
     for filename in os.listdir(imgpath):        
         if filename[-3:].upper() == 'JPG':
             print filename
@@ -344,5 +342,8 @@ if __name__ == "__main__":
                 cv2.circle(illu,(bound[1].start*3 + bound[1].stop*3, bound[0].stop*6), 3, (0,255,0),-1)
                 cv2.line(illu, (bound[1].start*3 + bound[1].stop*3, bound[0].start*6), (bound[1].start*3 + bound[1].stop*3, bound[0].stop*6), (255,0,0),2)
 #                 cv2.rectangle(illu, (bound[1].start*6, bound[0].start*6),(bound[1].stop*6, bound[0].stop*6), randomColor() ,1)
-            cv2.imwrite('/home/loitg/Downloads/complex-bg/java3/'+filename + '.jpg', illu)
+            cv2.imwrite('/home/loitg/Downloads/complex-bg/java32/'+filename + '.jpg', illu)
+
+#             cv2.imshow('illu', illu)
+#             cv2.waitKey(-1)
 
