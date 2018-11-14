@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 import sys
-from asn1crypto.x509 import Features
-from click.termui import clear
-from statsmodels.base.model import Results
 sys.path += ['/usr/local/lib/python2.7/dist-packages/mininet-2.2.1-py2.7.egg', '/usr/lib/python2.7/dist-packages', '/usr/lib/python2.7', '/usr/lib/python2.7/plat-x86_64-linux-gnu', '/usr/lib/python2.7/lib-tk', '/usr/lib/python2.7/lib-old', '/usr/lib/python2.7/lib-dynload', '/home/loitg/.local/lib/python2.7/site-packages', '/usr/local/lib/python2.7/dist-packages', '/usr/lib/python2.7/dist-packages/PILcompat', '/usr/lib/python2.7/dist-packages/gtk-2.0']
 import cv2
 from pylab import *
@@ -27,6 +24,8 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 from shapely.geometry import Polygon
 from scipy.interpolate import interp1d
 from sklearn.externals import joblib
+
+outfile = None
 
 def s(scale, a):
     return int(scale*a)
@@ -105,18 +104,19 @@ class SubLine(object):
     MAX_OUTSIDER_RATIO = 0.9
     
     LOOKAHEAD = 2.5
-    INTERVAL_BASIC_LENS = [0.2,0.5]
+    INTERVAL_BASIC_LENS = [0.4,0.2]
     MAX_ANGLE = 30.0
-    NUM_ANGLE = 31
+    NUM_ANGLE = 10
 
     def _initCur(self, topy, boty, x):
         self.curtopy = topy
         self.curboty = boty
-        self.height = float(self.aboty - self.atopy)
+        self.height = float(boty - topy)
         self.curx = x
         self.curnextx = self.curx + int(self.height * self.LOOKAHEAD * 2)
+        if self.curnextx > self.imgwidth: self.curnextx = self.imgwidth
         ###
-        a,b = np.meshgrid(np.arange(self.curx, self.curnextx), self.tanangle_list)
+        a,b = np.meshgrid(np.arange(self.curnextx-self.curx, 0,-1), self.tanangle_list)
         self.ax_y0 = a*b
         ### 
         self.checkpoints = [(self.curx, self.curtopy - int((self.INTERVAL_BASIC_LENS[0]+self.INTERVAL_BASIC_LENS[1])*self.height)),
@@ -125,36 +125,38 @@ class SubLine(object):
                             (self.curx, self.curboty + int(self.INTERVAL_BASIC_LENS[1]*self.height)),
                             (self.curx, self.curboty + int((self.INTERVAL_BASIC_LENS[0]+self.INTERVAL_BASIC_LENS[1])*self.height))]
 
-    def __init__(self, topy, boty, x, tops=[], bottoms=[], clf=None, img=None):
+    def __init__(self, topy, boty, x, tops=[], bottoms=[], clf=None, img=None, angle=None):
+        self.img = img
+        self.imgheight = img.shape[0]
+        self.imgwidth = img.shape[1]
         self.tops = tops
         self.bottoms = bottoms
         self.isnew = True
         self.nextCount = 0
-        self.id = str(self.curboty) + '.' + str(self.curx)
+        
         self.lastytopindex = 0
         self.lastybotindex = 0
         self.clf = clf
-        self.img = img
         # post-set
-        self.angle = 0
+        self.angle = angle
         self.toppoints = []
         self.botpoints = []
         # others
-        self._resetCur(topy, boty, x)
         self.sin = {}; self.cos = {}
         for a in np.linspace(-self.MAX_ANGLE, self.MAX_ANGLE, 9):
             self.sin[a] = math.sin(a/180.0*math.pi)
             self.cos[a] = math.cos(a/180.0*math.pi)
         self.angle_list = np.linspace(-self.MAX_ANGLE, +self.MAX_ANGLE, self.NUM_ANGLE+1)
+        self.angle_list = self.angle_list[:-1]
+        self.dangle = 2.0*self.MAX_ANGLE/self.NUM_ANGLE
         self.angle_list = self.angle_list + self.dangle/2
         self.tanangle_list = np.tan(self.angle_list/180.0*math.pi)
-        self.dangle = 2.0*self.MAX_ANGLE/self.NUM_ANGLE
+        self._initCur(topy, boty, x)
+        self.id = str(self.curboty) + '.' + str(self.curx)
         
 
     def _a2i(self, a):
         index = int(math.floor((a + self.MAX_ANGLE)/self.dangle))
-        if index < 0: index = 0
-        if index >= self.NUM_ANGLE: index = self.NUM_ANGLE - 1 
         return index
     
     def _i2a(self, index): 
@@ -190,17 +192,42 @@ class SubLine(object):
         delta_x = point[0] - origin[0]
         delta_y = point[1] - origin[1]
         angle = math.atan2(delta_y, delta_x)/math.pi*180.0
-        if angle < -self.MAX_ANGLE or angle > +self.MAX_ANGLE:
-            return None
         return self._a2i(angle)
 
-    def buildAngleFeatures(self, ax_topA, ax_topB, ax_topC, ax_botB, ax_botC, ax_botD, ax_ytopB, ax_ybotC):                
+    def buildAngleFeatures(self, ax_topA, ax_topB, ax_topC, ax_botB, ax_botC, ax_botD, ax_ytopB, ax_ybotC):        
         ax_topmask = np.cumsum(ax_topB, axis=1).astype(bool)
         ax_botmask = np.cumsum(ax_botC, axis=1).astype(bool)
         ax_mask = ax_topmask & ax_botmask
-        widths = np.sum(ax_mask, axis=0)
-        countBCfilter = widths > 1
+#         print 'topB 0'
+#         print ax_topB.astype(uint8)
+#         print 'botB 0'
+#         print ax_botB.astype(uint8)
+#         print 'botC 0'
+#         print ax_botC.astype(uint8)
+#         print 'topC 0'
+#         print ax_topC.astype(uint8)
+#         print 'mask 0'
+#         print ax_mask.astype(uint8)
+        ax_topB = ax_topB & ax_mask
+        ax_botC = ax_botC & ax_mask
+        count_topB = np.sum(ax_topB, axis=1)
+        count_botC = np.sum(ax_botC, axis=1)
+        countBCfilter = (count_topB > 1) & (count_botC > 1)
+#         print 'filter'
+#         print countBCfilter.astype(uint8)
+        ax_mask = ax_mask[countBCfilter] 
+#         print 'mask 1'
+#         print ax_mask.astype(uint8)
+        widths = np.sum(ax_mask, axis=1)
+#         print 'width'
+#         print widths.astype(uint8)
+        if np.all(~countBCfilter):
+            return np.zeros(shape=(0,14),dtype=float), widths
         
+#         print 'ax_y0'
+#         print self.ax_y0
+#         print 'ytopB'
+#         print ax_ytopB
         ax_topA = ax_topA[countBCfilter]
         ax_topB = ax_topB[countBCfilter]
         ax_topC = ax_topC[countBCfilter]
@@ -209,60 +236,79 @@ class SubLine(object):
         ax_botD = ax_botD[countBCfilter]
         ax_ytopB = ax_ytopB[countBCfilter]
         ax_ybotC = ax_ybotC[countBCfilter]
-        ax_mask = ax_mask[countBCfilter]
+        ax_y0 = self.ax_y0[countBCfilter]
+
+#         print 'topB 1'
+#         print ax_topB.astype(uint8)
+#         print 'botC 1'
+#         print ax_botC.astype(uint8)
         
         ax_topA = ax_topA & ax_mask
-        ax_topB = ax_topB & ax_mask
         ax_topC = ax_topC & ax_mask
         ax_botB = ax_botB & ax_mask
-        ax_botC = ax_botC & ax_mask
         ax_botD = ax_botD & ax_mask
 
-        count_topA = np.sum(ax_topA, axis=0)
-        count_topB = np.sum(ax_topB, axis=0)
-        count_topC = np.sum(ax_topC, axis=0)
-        count_botB = np.sum(ax_botB, axis=0)
-        count_botC = np.sum(ax_botC, axis=0)
-        count_botD = np.sum(ax_botD, axis=0)
-
+        count_topA = np.sum(ax_topA, axis=1)
+        count_topB = np.sum(ax_topB, axis=1)
+        count_topC = np.sum(ax_topC, axis=1)
+        count_botB = np.sum(ax_botB, axis=1)
+        count_botC = np.sum(ax_botC, axis=1)
+        count_botD = np.sum(ax_botD, axis=1)
+#         print 'count topA'
+#         print count_topA
+#         print 'count topB'
+#         print count_topB
+#         print 'count topC'
+#         print count_topC
+#         print 'count botB'
+#         print count_botB
+#         print 'count botC'
+#         print count_botC  
+#         print 'count botD'
+#         print count_botD   
         f0 = np.where(countBCfilter)[0]
-        f1 = count_topB
-        f2 = count_topA/count_topB
-        f3 = count_botB/count_topB
-        f4 = count_botC
-        f5 = count_botD/count_botC
-        f6 = count_topC/count_botC
+        f1 = 1.0*count_topB
+        f2 = 1.0*count_topA/count_topB
+        f3 = 1.0*count_botB/count_topB
+        f4 = 1.0*count_botC
+        f5 = 1.0*count_botD/count_botC
+        f6 = 1.0*count_topC/count_botC
         
         ff0 = self.angle_list[countBCfilter]
         ff1 = ff0 - self.angle if self.angle is not None else np.zeros_like(ff0)
         ff2 = 1.0*self.height/widths
-        ydiff = self.ax_y0 - ax_ytopB
+
+        ydiff = ax_y0 - ax_ytopB
         ydiff[~ax_mask] = 0
-        ff3 = np.sum(ydiff**2, axis=0)
-        ydiff = self.ax_y0 - ax_ybotC
+        ff3 = np.sqrt(np.sum(ydiff**2, axis=1))/self.height/count_topB
+        ydiff = ax_y0 - ax_ybotC
         ydiff[~ax_mask] = 0
-        ff4 = np.sum(ydiff**2, axis=0)
-         
+        ff4 = np.sqrt(np.sum(ydiff**2, axis=1))/self.height/count_botC
+        
         def my_func(row):
-            xs = np.where(row)[0].tolist()
+#             print 'row ' + str(row.astype(uint8))
+            xs = np.where(row)[0].tolist() + [len(row)]
+#             print 'xs ' + str(xs)
             N = len(xs)
-            L = max(xs) - min(xs)
+            L = xs[-1] - xs[0]
             ds = [xs[i+1] - xs[i] for i in range(0,N-1)]
             a = 1.0*L/(N-1)
             b = np.median(ds)
+#             print a,b, abs(a-b)/a
             return abs(a-b)/a
-        
-        ff5 = np.apply_along_axis(my_func, 0, ax_topB)
-        ff6 = np.apply_along_axis(my_func, 0, ax_botC)
-        
-        
-        return np.array([f0,ff0,ff1,f1,f2,f3,f4,f5,f6,ff2,ff3,ff4,ff5,ff6], dtype=float), widths
 
-    def writeFeaturesToFile(self, outfile, islongline, isshortline):
-        outfile.write()
-        feature
+        ff5 = np.apply_along_axis(my_func, 1, ax_topB)
+        ff6 = np.apply_along_axis(my_func, 1, ax_botC)
 
-    def buildData(self, features, img, outfile):
+        return np.transpose(np.array([f0,ff0,ff1,f1,f2,f3,f4,f5,f6,ff2,ff3,ff4,ff5,ff6], dtype=float)), widths
+
+    def writeFeaturesToFile(self, features, islongline, isshortline):
+        features = features.tolist() + [islongline, isshortline]
+        features = [str(f) for f in features]
+        global outfile
+        outfile.write(','.join(features) + '\n')
+
+    def buildData(self, features, widths):
 #         while True:
 #             a = np.random.normal(0.0, self.MAX_ANGLE)
 #             i = a2i(a)
@@ -270,52 +316,60 @@ class SubLine(object):
 #             features[i] 
 
         i=0
+        n = len(features)
+        if n == 0: return np.array([])
+        results = np.zeros(n)
         while True:
             feature = features[i]
-            angle = feature[0]
-            width = feature[2]
-            
-            
-            cv2.line(img, (self.curtopy, self.curx), (self.curtopy + int(math.tan(angle/180.0*math.pi)*width), self.curx + int(width)))
-            cv2.line(img, (self.curboty, self.curx), (self.curboty + int(math.tan(angle/180.0*math.pi)*width), self.curx + int(width)))
+            angle = feature[1]
+            width = widths[i]
+            fea = zip(range(len(feature)), feature)
+            fstr = [str(x) for x in fea]
+            print(''.join(fstr) )
+            img5 = self.img.copy()
+            cv2.line(img5, (self.curx, self.curtopy), (self.curx + int(width), self.curtopy + int(math.tan(angle/180.0*math.pi)*width)),  (0,0,255),1)
+            cv2.line(img5, (self.curx, self.curboty), (self.curx + int(width), self.curboty + int(math.tan(angle/180.0*math.pi)*width)),  (0,0,255),1)
             cv2.imshow('ii', img5)
             k = cv2.waitKey(-1)
             if k == ord('n'):
-                return 0
+                break 
             elif k == ord('1'): #short line
-                is_line = True
-                is_selected = False
+                self.writeFeaturesToFile(feature[1:], 0, 1)
+                results[i] = 1
             elif k == ord('2'): #long line
-                is_line = True
-                is_selected = True
+                self.writeFeaturesToFile(feature[1:], 1, 0)
+                results[i] = 1
             elif k == ord('`'): # notline
-                is_line = False
-                is_selected = False
-            elif k == ord('a'): # move down
+                self.writeFeaturesToFile(feature[1:], 0, 0)
+            elif k == ord('i'): # move down
                 i += 1
-                if i >= len(features): i = len(features) -1
+                if i >= n: i = n -1
                 continue
-            elif k == ord('q'): # move up
+            elif k == ord('k'): # move up
                 i -= 1
                 if i < 0: i = 0
                 continue
-                       
-            
-            
-            
+            elif k == ord('o'): # move down
+                i += 5
+                if i >= n: i = n -1
+                continue
+            elif k == ord('l'): # move up
+                i -= 5
+                if i < 0: i = 0
+                continue
         
-        
-        
-        return selected_results
+        return np.array(results)
     
     def _filterCombineConf3(self, results):
-        results = results[results[3]]
+        results = results[results[:,3]>0.5]
         if len(results) > 0:
-            return results[len(results)/2]
+            return results[len(results)/2:len(results)/2+1]
         else:
             return results
     
-    def next2(self, allnodes, allpoints, img):        
+    def next2(self, allnodes, allpoints): 
+        retlines = []
+               
         ax_topA = np.zeros((self.NUM_ANGLE, self.curnextx - self.curx), dtype=np.bool)
         ax_topB = np.zeros((self.NUM_ANGLE, self.curnextx - self.curx), dtype=np.bool)
         ax_topC = np.zeros((self.NUM_ANGLE, self.curnextx - self.curx), dtype=np.bool)
@@ -332,59 +386,68 @@ class SubLine(object):
             if point_type == self.ISEMPTY: continue
             
             alpha_i_s = [self._toAX(chkpoint, (x,y)) for chkpoint in self.checkpoints]
+            def clipaa(a):
+                if a < 0: a=0
+                if a >= self.NUM_ANGLE: a = self.NUM_ANGLE - 1
+                return a
+            alpha_i_s = [clipaa(a) for a in alpha_i_s]
             delta_x = x - self.curx
             delta_x = -delta_x
-            
+            print (x,y)
+            print self.checkpoints
+            print alpha_i_s
             if point_type == self.ISTOP:
-                ax_topA[alpha_i_s[0]:alpha_i_s[1], delta_x] = True
-                ax_topB[alpha_i_s[1]:alpha_i_s[2], delta_x] = True
-                ax_topC[alpha_i_s[2]:alpha_i_s[3], delta_x] = True
-                ax_ytopB[alpha_i_s[1]:alpha_i_s[2], delta_x] = y - (self.checkpoints[1][1] + self.checkpoints[2][1])/2
+                ax_topA[alpha_i_s[1]:alpha_i_s[0], delta_x] = True
+                ax_topB[alpha_i_s[2]:alpha_i_s[1], delta_x] = True
+                ax_topC[alpha_i_s[3]:alpha_i_s[2], delta_x] = True
+                ax_ytopB[alpha_i_s[2]:alpha_i_s[1], delta_x] = y - (self.checkpoints[1][1] + self.checkpoints[2][1])/2
             elif point_type == self.ISBOT:
-                ax_botB[alpha_i_s[1]:alpha_i_s[2], delta_x] = True
-                ax_botC[alpha_i_s[2]:alpha_i_s[3], delta_x] = True
-                ax_botD[alpha_i_s[3]:alpha_i_s[4], delta_x] = True
-                ax_ybotC[alpha_i_s[2]:alpha_i_s[3], delta_x] = y - (self.checkpoints[2][1] + self.checkpoints[3][1])/2
-                    
+                ax_botB[alpha_i_s[2]:alpha_i_s[1], delta_x] = True
+                ax_botC[alpha_i_s[3]:alpha_i_s[2], delta_x] = True
+                ax_botD[alpha_i_s[4]:alpha_i_s[3], delta_x] = True
+                ax_ybotC[alpha_i_s[3]:alpha_i_s[2], delta_x] = y - (self.checkpoints[2][1] + self.checkpoints[3][1])/2
+        
         features, widths = self.buildAngleFeatures(ax_topA, ax_topB, ax_topC, ax_botB, ax_botC, ax_botD, 
                                            ax_ytopB, ax_ybotC)
-        
-        results = self.buildData(features)
+        results = self.buildData(features, widths)
 
 #         results = self.clf.predict(features)
-        results = np.concatenate([features[:,0], #id
+        results = np.array([features[:,0]+0.1, #id
                                   features[:,1], #angle
-                                  widths, #width
-                                  (results>0.5)]) #isline
+                                  widths + 0.1, #width
+                                  results]) #isline
+        results = np.transpose(results)
         results = self._filterCombineConf3(results)
         
-        retlines = []
         for i, result in enumerate(results):
-            idang = result[0]
+            idang = int(result[0])
             angle = result[1]
-            width = result[2]
+            width = int(result[2])
 
-            img5=img.copy()
+            img5=self.img.copy()
             
-            xmask = ax_topB[idang][:width]
+            xmask = ax_topB[idang][:-(width+1):-1]
             xs = np.where(xmask)[0]
-            ys = ax_ytopB[idang][:width][xmask]
+            ys = ax_ytopB[idang][:-(width+1):-1][xmask].astype(int)
             ys += (self.checkpoints[1][1] + self.checkpoints[2][1])/2
-            toppoints = zip(xs, ys)
-            drawPoints(img5, toppoints, (0,255,0))
+            xs += self.curx + 1
+            toppoints = zip(xs, ys) + [(self.curx, self.curtopy)]
+            drawPoints(img5, toppoints, (0,0,255))
             
-            xmask = ax_botC[idang][:width]
+            xmask = ax_botC[idang][:-(width+1):-1]
             xs = np.where(xmask)[0]
-            ys = ax_ybotC[idang][:width][xmask]
+            ys = ax_ybotC[idang][:-(width+1):-1][xmask].astype(int)
             ys += (self.checkpoints[2][1] + self.checkpoints[3][1])/2
-            botpoints = zip(xs, ys)
-            drawPoints(img5, botpoints, (0,255,0))
+            xs += self.curx + 1
+            botpoints = zip(xs, ys) + [(self.curx, self.curboty)]
+            drawPoints(img5, botpoints, (0,0,120))
             
             topy = self.curtopy + int(math.tan(angle/180.0*math.pi)*width)
             boty = self.curboty + int(math.tan(angle/180.0*math.pi)*width)
             x = self.curx + int(width)
             
-            clear
+            cv2.imshow('gg', img5)
+            cv2.waitKey(-1)
             
             if i == len(results)-1:
                 self.curtopy = int(topy)
@@ -394,6 +457,7 @@ class SubLine(object):
                 self.lastybotindex = len(self.bottoms)
                 self.tops = self.tops + toppoints
                 self.bottoms = self.bottoms + botpoints
+                self.angle = angle
                 self.nextCount += 1
                 retlines.append(self)
             else:
@@ -402,7 +466,9 @@ class SubLine(object):
                                   x=x,
                                   tops=self.tops + toppoints,
                                   bottoms=self.bottoms + botpoints,
-                                  clf=self.clf)
+                                  clf=self.clf,
+                                  img=self.img,
+                                  angle = angle)
                 another.lastytopindex = len(self.tops)
                 another.lastybotindex = len(self.bottoms)  
                 another.isnew = True
@@ -413,6 +479,25 @@ class SubLine(object):
             
         return retlines
     
+    def finalize(self, retlines, cleared_map):
+        xs, y_top, y_bot = self.extractConstHeight()
+        n = len(xs)
+        if n == 0: return
+        height = y_bot[0] - y_top[0]
+        threshold = int(self.height*SubLine.NODE_IN_LINE_THRESHOLD)
+        
+        if len(self.img.shape) > 2:
+            retline = np.zeros((height,n,3), dtype=np.uint8)
+        else:
+            retline = np.zeros((height,n), dtype=np.uint8)
+        for i in range(n):
+            ### TODO: fix boundary condition here
+            retline[:,i] = self.img[y_top[i]:y_bot[i],xs[i]]
+            cleared_map[(y_top[i] - threshold):(y_top[i] + threshold),xs[i]] = SubLine.ISTOP
+            cleared_map[(y_bot[i] - threshold):(y_bot[i] + threshold),xs[i]] = SubLine.ISBOT
+            
+        retlines.append(retline)
+        return retline
     
     def smoothedFunc(self, xs, ys):
         _, indices = np.unique(xs, return_index=True) 
@@ -515,6 +600,7 @@ def extractLines2(imgpath):
     nodes = [[None for j in range(h+1)] for i in range(w+1)]
     points = [[SubLine.ISEMPTY for j in range(h+1)] for i in range(w+1)]
     clearedList = set() ## temporary solution
+    cleared_map = np.zeros_like(img_grey, dtype=np.uint8)
     
     objects = sorted(objects,key=lambda obj:(obj[1].start + obj[1].stop)/2)
     for bound in objects:
@@ -528,45 +614,48 @@ def extractLines2(imgpath):
         nodes[bottom[0]][bottom[1]] = (topy, boty, x)
             
     allines = []
+    retlines = []
     
     clf = joblib.load('/home/loitg/Downloads/complex-bg/le_model.pkl')
     
-    def move(subline, allnodes, allpoints,img):
-        newsublines = subline.next(allnodes, allpoints,img)
+    def move(subline, allnodes, allpoints):
+        newsublines = subline.next2(allnodes, allpoints)
         if len(newsublines) > 0:
             for new in newsublines:
                 if new.isnew: 
                     allines.append(new)
                     new.isnew = False
                 print '______________++++++++++++++=' + new.id
-                move(new, allnodes, allpoints, img)
+                move(new, allnodes, allpoints)
         else:
-            subline.clear(allnodes, clearedList)
+            subline.finalize(retlines, cleared_map)
+            if len(retlines) > 0:
+                cv2.imshow('aa', retlines[0])
+                cv2.imshow('bb', cleared_map*120)
+                cv2.waitKey(-1)
 
-#     illu = img.copy()
-#     for bound in objects:
-#         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),2, (255,0,0),-1)
-#         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 2, (0,255,0),-1)
+    illu = img.copy()
+    for bound in objects:
+        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),2, (255,0,0),-1)
+        cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 2, (0,255,0),-1)
 #         cv2.line(illu, ((bound[1].start + bound[1].stop)/2, bound[0].start), ((bound[1].start + bound[1].stop)/2, bound[0].stop), (0,0,255),1)
-#     cv2.imshow('ii', illu)
 
     for bound in objects: # sorted
         topy = bound[0].start
         boty = bound[0].stop
         x = (bound[1].start + bound[1].stop)/2
-        if (topy, boty, x) in clearedList: 
+        if cleared_map[topy,x] == SubLine.ISTOP and cleared_map[boty,x] == SubLine.ISBOT:
             continue
         subline = SubLine(topy=topy,
                           boty=boty,
                           x=x,
-                          clf=clf)
+                          clf=clf,
+                          img=illu)
         allines.append(subline)
         subline.isnew = False
-        try:
-            move(subline, nodes, points,img)
-        except Exception as e:
-            pass
-    ### illustrate
+        move(subline, nodes, points)
+    
+    print 'DONE LINE, now ILLUSTRATE **************+_+_+_+++_+_+_+_+__+_+_'
     img2 = img.copy()
     for line in allines:
         try:
@@ -583,8 +672,10 @@ def extractLines2(imgpath):
     
 import random, os
 if __name__ == "__main__":
-    filelist = list(os.listdir('OPIMIZE findBox first !!!!!!'))
-    random.shuffle(filelist)
+    np.set_printoptions( threshold=np.inf)
+    filelist = list(os.listdir('/home/loitg/Downloads/complex-bg/java/'))
+    global outfile
+    outfile = open('/home/loitg/Downloads/complex-bg/le_cls_data_2.csv','w')
     for filename in filelist:       
 #         if filename[-3:].upper() == 'JPG':
         if filename == '12a.JPG':
