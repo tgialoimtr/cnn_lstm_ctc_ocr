@@ -189,14 +189,15 @@ def buildModel1(data):
     from sklearn.model_selection import train_test_split
     
     clf_names = ["SVM",
-#                  "NN",
+                "NN",
                  "DecitionTree"]
     clfs = [SVC(gamma=2, C=1, probability=True),
-#            MLPClassifier(hidden_layer_sizes=(20,10), alpha=1),
+            MLPClassifier(hidden_layer_sizes=(30,10,5), alpha=1),
            DecisionTreeClassifier(max_depth=4)]
     
-    X = data[:, 9:19]
-    y = data[:, 2]
+    X = data[:, :13]
+    print data.shape
+    y = (data[:, 14] >0.5) | (data[:, 13] > 0.5)
     for clf, name in zip(clfs, clf_names):
         print "===---==" + name
         for rs in range(30,33):
@@ -206,27 +207,27 @@ def buildModel1(data):
             print "--=====" + str(score)
     
     clfs[0].fit(X,y)
-    joblib.dump(clfs[0], '/home/loitg/Downloads/complex-bg/le_model_2.pkl')
+    joblib.dump(clfs[0], '/home/loitg/Downloads/complex-bg/le_model_3.pkl')
 
-le_cls_data_path = '/home/loitg/Downloads/complex-bg/le_cls_data_2.csv'
-
-# if __name__ == "__main__":
-#     data = readData(le_cls_data_path)
-#     data = data[~np.isnan(data).any(axis=1)]
-#     buildModel1(data)
-#     
-#     
-#     sys.exit(0)
+le_cls_data_path = '/home/loitg/Downloads/complex-bg/le_cls_data_3.csv'
 
 if __name__ == "__main__":
-    gtdatafile = open(le_cls_data_path, 'w')
-    for filename in os.listdir('/home/loitg/Downloads/complex-bg/special_line/'):
-        if filename[-3:].upper() == 'JPG':
-#         if filename == "4.JPG":
-            print filename
-#             print dir(random)
-#             sys.exit(0)
-            buildLineRecogData('/home/loitg/Downloads/complex-bg/special_line/' + filename, gtdatafile)
+    data = readData(le_cls_data_path)
+    data = data[~np.isnan(data).any(axis=1)]
+    buildModel1(data)
+     
+     
+    sys.exit(0)
+
+# if __name__ == "__main__":
+#     gtdatafile = open(le_cls_data_path, 'w')
+#     for filename in os.listdir('/home/loitg/Downloads/complex-bg/special_line/'):
+#         if filename[-3:].upper() == 'JPG':
+# #         if filename == "4.JPG":
+#             print filename
+# #             print dir(random)
+# #             sys.exit(0)
+#             buildLineRecogData('/home/loitg/Downloads/complex-bg/special_line/' + filename, gtdatafile)
             
             
             

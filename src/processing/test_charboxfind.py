@@ -148,18 +148,19 @@ def counter(l):
 def buildNextLayerRelation(l1, l2):
     l1 = l1.ravel()
     l2= l2.ravel()
-    l = 10000*l1 + l2
+    N = 100000#max(max(l1), max(l2))
+    l = N*l1 + l2
     l.sort()
     pi = l[0]; ret = {}; count = 0
     for i in l:
         if i != pi:
-            ret[(i/10000, i%10000)] = count
+            ret[(i/N, i%N)] = count
             pi = i
             count = 1
         else:
             count += 1
             
-    ret[(i/10000, i%10000)] = count
+    ret[(i/N, i%N)] = count
     return ret
 
 def sauvolatree(img_grey):
@@ -238,7 +239,6 @@ def sauvolatree(img_grey):
             scalecount[c] = v
             n += 1
     mean_cand_scale = 1.0 * sum(scalecount) / n
-    print 'OOOII----------- ', mean_cand_scale
     peaks = []
     for i in range(5,len(scalecount)-4):
         m = max(scalecount[i], scalecount[i+1], scalecount[i+2], scalecount[i+3], scalecount[i+4])
@@ -249,8 +249,6 @@ def sauvolatree(img_grey):
             m = max(scalecount[i], scalecount[i+1], scalecount[i+2])
             if scalecount[i+1] >= m and scalecount[i+1] > mean_cand_scale*1.3:
                 peaks.append(i+1)
-    print 'OOOII----------- ', scalecount
-    print 'OOOII----------- ', peaks
     stree.labels = labels
     stree.bins = bins
     stree.scales = peaks
