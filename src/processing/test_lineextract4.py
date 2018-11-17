@@ -24,7 +24,7 @@ from shapely.geometry import Polygon
 from scipy.interpolate import interp1d
 from sklearn.externals import joblib
 
-def linfit(xs, ys):
+def linfit2(xs, ys):
     n = len(xs)
     sumx = np.sum(xs)
     sumy = np.sum(ys)
@@ -563,7 +563,7 @@ class SubLine(object):
         if self.nextCount > 1:
             yhat = lowess(ys, xs, frac=0.666, is_sorted=False, return_sorted=False, delta=0.0)
         else:
-            b,m,_= linfit(xs, ys)
+            b,m,_= linfit2(xs, ys)
             yhat = (xs*b + m).astype(int)
             
 #         from matplotlib import pyplot as plt
@@ -593,7 +593,7 @@ class SubLine(object):
         y_bot = [int(f_bot(x)) for x in xs]
         height=int(height)
         y_top = [y - height for y in y_bot]
-        return xs, y_top, y_bot
+        return np.array(xs), np.array(y_top), np.array(y_bot)
     
 #         f_combined = self.smoothedFunc(np.concatenate([tops[:,0], bottoms[:,0]]), np.concatenate([tops[:,1]+height, bottoms[:,1]]))
 #         xs = list(range(x2,x3))
@@ -609,9 +609,7 @@ class SubLine(object):
         temp = img.copy()
         for i in range(len(xs)):
             temp[y_top[i]:y_bot[i],xs[i]] = col
-            
-        b,m,_= linfit(xs, y_bot)
-        
+        b,m,_= linfit2(xs, y_bot)
         cv2.line(temp, (0, int(m)), (self.imgwidth, int(b*self.imgwidth + m)),  col,1)
         cv2.addWeighted(img, 1-opacity, temp, opacity, gamma=0, dst=img)
         if drawyhat:
@@ -799,8 +797,8 @@ if __name__ == "__main__":
     filelist = list(os.listdir(inputpath))
 #     random.shuffle(filelist)
     for filename in filelist:       
-#         if filename[-3:].upper() == 'PNG':
-        if filename == 'gimp-temp-1066018.-area.png':
+        if filename[-3:].upper() == 'PNG':
+#         if filename == 'gimp-temp-1066018.-area.png':
             print filename
             illu, img = extractLines2(inputpath + filename)
 #             cv2.imwrite(outputpath+filename + '_1.jpg', illu)
