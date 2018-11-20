@@ -126,6 +126,11 @@ class SubLine(object):
     CB_LEN = 5.0
     SCLINE_LEFT = 5.0
     SCLINE_RIGHT = 5.0
+    EP_LEN = 2.0
+    EP_ABOVE = 0.5
+    EP_BELOW = 0.5
+    EP_FINAL_EXPAND = (0.2, 1.0)
+    
 
     def _initCur(self):
         self.height = float(self.curboty - self.curtopy)
@@ -618,8 +623,6 @@ class SubLine(object):
 
 
     def expandPoints(self):
-#         use self.curveline
-#         use combineinfo
         xs, y_top, y_bot = self.curveline
         height = y_bot[0] - y_top[0]
         ep_len = int(height*self.EP_LEN)
@@ -628,12 +631,12 @@ class SubLine(object):
         ep_middle = int(height*0.5)
         x1 = self._clipx(xs[0] - ep_len)
         x4 = self._clipx(xs[-1] + ep_len)
-        
-        subwindow = self.pointsmap[self.bounds[0], x1:x4]
+        y1 = self._clipy(self.bounds[0].start - ep_above)
+        y4 = self._clipy(self.bounds[0].stop + ep_below)
+        subwindow = self.pointsmap[y1:y4, x1:x4]
         toppoints = np.where(subwindow==SubLine.ISTOP)
         botpoints = np.where(subwindow==SubLine.ISBOT)
-        
-        origin = [x1,self.bounds[0].start]
+        origin = [y1, x1]
         toppoints = np.array(toppoints).T + origin
         botpoints = np.array(botpoints).T + origin
         def expandThisTopPoint(point):
@@ -659,37 +662,25 @@ class SubLine(object):
             if y > y0 - ep_middle and y < y0 + ep_below:
                 return True
             else:
-                return False    
+                return False
+            
+        img4 = self.img.copy()
+#         drawPoints(img4, self.tops, (255,0,0))
         validtop_filter = np.apply_along_axis(expandThisTopPoint, 1, toppoints)
         validtops = toppoints[validtop_filter]
-        self.tops += [(point[1], point[0]) for point in validtops]
+        self.tops = [(point[1], point[0]) for point in validtops]
+#         drawPoints(img4,[(point[1], point[0]) for point in validtops], (0,0,125))
         self.tops.sort()
 
+        drawPoints(img4, self.bottoms, (0,255,0))
         validbot_filter = np.apply_along_axis(expandThisBotPoint, 1, botpoints)
         validbots = botpoints[validbot_filter]
-        self.bots += [(point[1], point[0]) for point in validbots]
-        self.bots.sort()
+        self.bottoms = [(point[1], point[0]) for point in validbots]
+#         drawPoints(img4,[(point[1], point[0]) for point in validbots], (0,0,255))
+        self.bottoms.sort()
         
-#         xs1 = np.arange(x1, xs[0])
-#         y1_bot = np.array([self.leftray.f(x) for x in xs1])
-#         y1_top = y1_bot - height
-# 
-#         xs4 = np.arange(xs[-1]+1, x4+1)
-#         y4_bot = np.array([self.rightray.f(x) for x in xs4])
-#         y4_top = y4_bot - height
-#         
-#         
-#         ep_area = np.concatenate([np.array([xs1, y1_top, y1_bot]),
-#                               np.array([xs, y_top, y_bot]),
-#                               np.array([xs4, y4_top, y4_bot])], axis=1)
-#         ep_area = np.clip(ep_area.T,0,self.imgheight-1)
-#         ep_area[:,0] = np.arange(x1,x4+1)
-#         
-#         
-#         self.pointsmap , filter which x,y in range(subwindow, min max of f), then y  in range of f(x) +- delta_threshold ?
-#         self.leftray
-        
-        
+#         cv2.imshow('ep', img4)
+#         cv2.waitKey(-1)
 
     def scoreLineAfter(self, line_after):
 #         img3 = self.img.copy()
@@ -723,39 +714,39 @@ class SubLine(object):
         y2 = y_after_expected + int(0.5*maxheight)
         x1 = x_this - int(maxheight*self.SCLINE_LEFT)
         x2 = x_this + int(maxheight*self.SCLINE_RIGHT)
-        print x_this, x_after, y_after, y_after_expected, maxheight
-        print y1, y2, x1, x2
+#         print x_this, x_after, y_after, y_after_expected, maxheight
+#         print y1, y2, x1, x2
         if y_after < y2 and y_after > y1:
             if x_after <= self.botleft[0]:
-                print 'outx'
+#                 print 'outx'
                 return False, -1
             elif x_after < x1:
                 delta_a = abs(self.rightray.b - line_after.rightray.b)
                 if delta_a <= 0.055: # arctan(3 degree)
-                    print 'accept-left'
-                    print self._t2a(self.rightray.b), self._t2a(line_after.rightray.b)
+#                     print 'accept-left'
+#                     print self._t2a(self.rightray.b), self._t2a(line_after.rightray.b)
                     return True, 0
                 else:
-                    print 'out-leftangle'
-                    print self._t2a(self.rightray.b), self._t2a(line_after.rightray.b)
+#                     print 'out-leftangle'
+#                     print self._t2a(self.rightray.b), self._t2a(line_after.rightray.b)
                     return False, -1
             elif x_after > x2:
                 delta_a = abs(self.rightray.b- line_after.leftray.b)
                 width_ratio_after = 1.0*(self.bounds[1].stop - self.bounds[1].start)/maxheight
-                if delta_a <=0.55 and width_ratio_after > 1.8 : # arctan(3 degree) 
+                if delta_a <=0.055 and width_ratio_after > 1.8 : # arctan(3 degree) 
                     delta_x = x_after - x_this
-                    print 'accept-right'
-                    print self._t2a(self.rightray.b), self._t2a(line_after.leftray.b), width_ratio_after
+#                     print 'accept-right'
+#                     print self._t2a(self.rightray.b), self._t2a(line_after.leftray.b), width_ratio_after
                     return False, delta_x
                 else:
-                    print 'out-rightangle-width'
-                    print self._t2a(self.rightray.b), self._t2a(line_after.leftray.b), width_ratio_after
+#                     print 'out-rightangle-width'
+#                     print self._t2a(self.rightray.b), self._t2a(line_after.leftray.b), width_ratio_after
                     return False, -1
             else:
-                print 'accept-center'
+#                 print 'accept-center'
                 return True, 0
         else:
-            print 'outy'
+#             print 'outy'
             return False, -1
         
 #         use combineinfo
@@ -770,11 +761,16 @@ class SubLine(object):
 # TODO:            if line far: set gaps from bounds
         self._updateCombineInfo()      
 
-    def _clipy(self, a):
+    def _clipx(self, a):
         if a < 0: return 0
         if a >= self.imgwidth: return self.imgwidth - 1
         return a
-    
+
+    def _clipy(self, a):
+        if a < 0: return 0
+        if a >= self.imgheight: return self.imgheight - 1
+        return a
+      
     def clear(self, cleared_maps):
         xs, y_top, y_bot = self.curveline
         n = len(xs)
@@ -852,19 +848,41 @@ class SubLine(object):
         return img
         
     ### Must call in or after _createCurve()
-    def extract(self, img, expand=0):
+    def extract(self, img, expands=(0.0,0.0)):
         xs, y_top, y_bot = self.curveline
         n = len(xs)
         if n == 0: return
-        height = y_bot[0] - y_top[0]        
+        height = y_bot[0] - y_top[0]
+        ep_abovebelow = int(height*expands[0])
+        ep_leftright = int(height*expands[1])
+        
+        x1 = self._clipx(xs[0] - ep_leftright)
+        x1s = np.arange(x1, xs[0])
+        y1_bot = np.array([self.leftray.f(x) for x in x1s])
+        y1_bot_ep = y1_bot + ep_abovebelow
+        y1_top_ep = y1_bot - height - ep_abovebelow
+        
+        x4 = self._clipx(xs[-1] + ep_leftright)
+        x4s = np.arange(xs[-1]+1, x4)
+        y4_bot = np.array([self.rightray.f(x) for x in x4s])
+        y4_bot_ep = y4_bot + ep_abovebelow
+        y4_top_ep = y4_bot - height - ep_abovebelow
+        
+        xs_ep = np.concatenate([x1s, xs, x4s])
+        y_top_ep = np.concatenate([y1_top_ep, y_top- ep_abovebelow, y4_top_ep])
+        y_bot_ep = np.concatenate([y1_bot_ep, y_bot+ ep_abovebelow, y4_bot_ep])
+        y_top_ep = np.clip(y_top_ep,0,self.imgheight-1)
+        y_bot_ep = np.clip(y_bot_ep,0,self.imgheight-1)
+        n = len(xs_ep)
+        height = y_bot_ep[0] - y_top_ep[0]
         if len(self.img.shape) > 2:
             retline = np.zeros((height,n,3), dtype=np.uint8)
         else:
             retline = np.zeros((height,n), dtype=np.uint8)
         for i in range(n): #TODO: remove EmptyGaps
-            aa = self._clipy(y_top[i])
-            bb = self._clipy(y_bot[i])
-            retline[:(bb-aa),i] = self.img[aa:bb,xs[i]]
+            aa = y_top_ep[i]
+            bb = y_bot_ep[i]
+            retline[:(bb-aa),i] = self.img[aa:bb,xs_ep[i]]
         return retline 
 
 
@@ -922,7 +940,7 @@ def extractLines2(imgpath):
     for bound in objects:
         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].start),2, (255,0,0),-1)
         cv2.circle(illu,((bound[1].start + bound[1].stop)/2, bound[0].stop), 2, (0,255,0),-1)
-
+ 
 #         cv2.line(illu, ((bound[1].start + bound[1].stop)/2, bound[0].start), ((bound[1].start + bound[1].stop)/2, bound[0].stop), (0,0,255),1)  
     
     
@@ -947,6 +965,7 @@ def extractLines2(imgpath):
         topy = bound[0].start
         boty = bound[0].stop
         x = (bound[1].start + bound[1].stop)/2
+        if boty - topy < 12: continue
         try:
             if cleared_maps[0][topy,x] and cleared_maps[1][boty,x]:
                 continue
@@ -956,35 +975,22 @@ def extractLines2(imgpath):
                           boty=boty,
                           x=x,
                           clf=clf,
-                          img=illu,
+                          img=img,
                           pointsmap=pointsmap)
         move(subline)
-
-    print 'basic lines finished in  ' + str(time() -tt)
-    tt = time()
-
-    img2 = img.copy()
-    for line in allines:
-        try:
-            col = str2col(line.id)
-            line.draw(img2, col, 0.5, drawyhat=False, drawline=True)
-        except Exception as e:
-            pass
-    cv2.imshow('img', img2)
-    cv2.waitKey(-1)
     
     allines.sort(key=lambda x: x.bounds[1].stop)
     i = 0
     while i < len(allines):
         result = allines[i]
         if result.available:
-            print '-------------------------'
-            img2 = illu.copy()
-            result.draw(img2, (125,125,125), 0.5, drawyhat=False)
-            cv2.line(img2, (0, int(result.rightray.m)), (result.imgwidth, \
-                int(result.rightray.b*result.imgwidth + result.rightray.m)), (255,0,0),1)
-            cv2.line(img2, (0, int(result.leftray.m)), (result.imgwidth, \
-                int(result.leftray.b*result.imgwidth + result.leftray.m)), (0,255,0),1)
+#             print '-------------------------'
+#             img2 = illu.copy()
+#             result.draw(img2, (125,125,125), 0.5, drawyhat=False)
+#             cv2.line(img2, (0, int(result.rightray.m)), (result.imgwidth, \
+#                 int(result.rightray.b*result.imgwidth + result.rightray.m)), (255,0,0),1)
+#             cv2.line(img2, (0, int(result.leftray.m)), (result.imgwidth, \
+#                 int(result.leftray.b*result.imgwidth + result.leftray.m)), (0,255,0),1)
 #             cv2.imshow('cb', img2)
 #             cv2.waitKey(-1)
             
@@ -1003,15 +1009,15 @@ def extractLines2(imgpath):
             result.combineLinesAfter(forceCombines)
             
             
-            for fcb in forceCombines:
-                col = str2col(fcb.id)
-                fcb.draw(img2, col, 0.5, drawyhat=False)
-                cv2.line(img2, (0, int(fcb.rightray.m)), (fcb.imgwidth, \
-                    int(fcb.rightray.b*fcb.imgwidth + fcb.rightray.m)), (255,0,0),1)
-                cv2.line(img2, (0, int(fcb.leftray.m)), (fcb.imgwidth, \
-                    int(fcb.leftray.b*fcb.imgwidth + fcb.leftray.m)), (0,255,0),1)
-            cv2.imshow('cb', img2)
-            cv2.waitKey(-1)
+#             for fcb in forceCombines:
+#                 col = str2col(fcb.id)
+#                 fcb.draw(img2, col, 0.5, drawyhat=False)
+#                 cv2.line(img2, (0, int(fcb.rightray.m)), (fcb.imgwidth, \
+#                     int(fcb.rightray.b*fcb.imgwidth + fcb.rightray.m)), (255,0,0),1)
+#                 cv2.line(img2, (0, int(fcb.leftray.m)), (fcb.imgwidth, \
+#                     int(fcb.leftray.b*fcb.imgwidth + fcb.leftray.m)), (0,255,0),1)
+#             cv2.imshow('cb', img2)
+#             cv2.waitKey(-1)
             
             if len(forceCombines) == 0: i += 1
             continue
@@ -1025,13 +1031,13 @@ def extractLines2(imgpath):
     while i < len(allines):
         result = allines[i]
         if result.available:
-            print '------------------------- FAR'
+#             print '------------------------- FAR'
             img2 = illu.copy()
-            result.draw(img2, (125,125,125), 0.5, drawyhat=False)
-            cv2.line(img2, (0, int(result.rightray.m)), (result.imgwidth, \
-                int(result.rightray.b*result.imgwidth + result.rightray.m)), (255,0,0),1)
-            cv2.line(img2, (0, int(result.leftray.m)), (result.imgwidth, \
-                int(result.leftray.b*result.imgwidth + result.leftray.m)), (0,255,0),1)
+#             result.draw(img2, (125,125,125), 0.5, drawyhat=False)
+#             cv2.line(img2, (0, int(result.rightray.m)), (result.imgwidth, \
+#                 int(result.rightray.b*result.imgwidth + result.rightray.m)), (255,0,0),1)
+#             cv2.line(img2, (0, int(result.leftray.m)), (result.imgwidth, \
+#                 int(result.leftray.b*result.imgwidth + result.leftray.m)), (0,255,0),1)
 #             cv2.imshow('cb', img2)
 #             cv2.waitKey(-1)
             linemap = []
@@ -1040,13 +1046,14 @@ def extractLines2(imgpath):
                 candidate = allines[j]
                 if not candidate.available: continue
                 forcedCombined, score = result.scoreLineAfter(candidate)
+#                 cv2.waitKey(-1)
                 if (not forcedCombined) and score >= 0:
                     linemap.append((score, candidate))            
             if len(linemap) > 0:
                 j, candidate = min(linemap)
-                candidate.draw(img2, str2col(candidate.id), 0.5, drawyhat=False)
-                cv2.imshow('cb-far', img2)
-                cv2.waitKey(-1)
+#                 candidate.draw(img2, str2col(candidate.id), 0.5, drawyhat=False)
+#                 cv2.imshow('cb-far', img2)
+#                 cv2.waitKey(-1)
                 result.combineLinesAfter([candidate])
                 continue
             else:
@@ -1057,12 +1064,7 @@ def extractLines2(imgpath):
             continue
 
     allines = [line for line in allines if line.available]
-    #TODO:
-#     retlines = []
-#     for line in allines:
-#         line._updateCurve()
-#         line.expandPoints()
-#         retlines.append(line.extract(img, expand=0))
+
     
     print 'DONE LINE, now ILLUSTRATE **************, TOTAL LINE COUNT ' + str(len(allines))
     print 'TOTAL TIME  ' + str(time() -tt)
@@ -1074,26 +1076,34 @@ def extractLines2(imgpath):
             line.draw(img2, col, 0.5, drawyhat=False, drawline=True)
         except Exception as e:
             pass
-    cv2.imshow('lines', img2)
+    cv2.imshow('lines-ext', img2)
     cv2.waitKey(-1)
     
+    retlines = []
+    for line in allines:
+        line._updateCurve()
+        line.expandPoints()
+        imgline = line.extract(img, expands=SubLine.EP_FINAL_EXPAND)
+        cv2.imshow('line', imgline)
+        cv2.waitKey(-1)
+        retlines.append(imgline)
     
-    return illu, img2
+    return illu, img2, retlines
 
     
 import random, os
 if __name__ == "__main__":
     np.set_printoptions( threshold=np.inf)
     inputpath='/home/loitg/Downloads/complex-bg/special_line/'
-    outputpath='/home/loitg/Downloads/complex-bg/java32/'
+    outputpath='/home/loitg/Downloads/complex-bg/java5/'
     filelist = list(os.listdir(inputpath))
     filelist.sort()
-    frompos = filelist.index('gimp-temp-1066031.-area.png')
-    for filename in filelist[frompos+1:]:       
+    frompos = 0#filelist.index('gimp-temp-1066042.-area.png')
+    for filename in filelist[frompos:]:       
         if filename[-3:].upper() == 'PNG':
 #         if filename == 'gimp-temp-1066018.-area.png':
             print filename
-            illu, img = extractLines2(inputpath + filename)
+            illu, img, lines = extractLines2(inputpath + filename)
 #             cv2.imwrite(outputpath+filename + '_1.jpg', illu)
 #             cv2.imwrite(outputpath+filename + '_4.jpg', img)
 
