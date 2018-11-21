@@ -129,7 +129,7 @@ class SubLine(object):
     EP_LEN = 2.0
     EP_ABOVE = 0.5
     EP_BELOW = 0.5
-    EP_FINAL_EXPAND = (0.2, 1.0)
+    EP_FINAL_EXPAND = (0.5, 2.0)
     
 
     def _initCur(self):
@@ -803,7 +803,7 @@ class SubLine(object):
             self.curveline = [],[],[]
         else:
             tops = np.array(self.tops)
-            f_top = self.smoothedFunc(tops[:,0], tops[:,1])
+#             f_top = self.smoothedFunc(tops[:,0], tops[:,1])
             bottoms = np.array(self.bottoms)
             f_bot = self.smoothedFunc(bottoms[:,0], bottoms[:,1])       
             
@@ -811,16 +811,15 @@ class SubLine(object):
             x2 = max(topx1, botx1); #x1 = min(topx1, botx1)
             topx2 = max(tops[:,0]); botx2 = max(bottoms[:,0])
             x3 = min(topx2, botx2); #x4 = max(topx2, botx2) 
-            heights = []
-            for x in range(x2,x3):
-                heights.append(f_bot(x) - f_top(x))
-            height = sum(heights)/len(heights)
             
-            xs = list(range(x2,x3))
-            y_bot = [int(f_bot(x)) for x in xs]
-            height=int(height)
-            y_top = [y - height for y in y_bot]
-            self.curveline = np.array(xs), np.array(y_top), np.array(y_bot)
+            xs = np.arange(x2,x3)
+            y_bot1 = f_bot(xs)
+#             y_top1 = f_top(xs)
+#             height = int(np.mean(y_bot1 - y_top1))
+            y_bot1 = y_bot1.astype(int)
+            y_top1 = y_bot1 - int(self.height)
+
+            self.curveline = xs, y_top1, y_bot1
     
 #         f_combined = self.smoothedFunc(np.concatenate([tops[:,0], bottoms[:,0]]), np.concatenate([tops[:,1]+height, bottoms[:,1]]))
 #         xs = list(range(x2,x3))
@@ -852,29 +851,31 @@ class SubLine(object):
         xs, y_top, y_bot = self.curveline
         n = len(xs)
         if n == 0: return
+        
         height = y_bot[0] - y_top[0]
         ep_abovebelow = int(height*expands[0])
         ep_leftright = int(height*expands[1])
         
         x1 = self._clipx(xs[0] - ep_leftright)
-        x1s = np.arange(x1, xs[0])
-        y1_bot = np.array([self.leftray.f(x) for x in x1s])
+        x1s = np.arange(x1, xs[0], dtype=int)
+        y1_bot = np.array([self.leftray.f(x) for x in x1s], dtype=int)
         y1_bot_ep = y1_bot + ep_abovebelow
         y1_top_ep = y1_bot - height - ep_abovebelow
         
         x4 = self._clipx(xs[-1] + ep_leftright)
-        x4s = np.arange(xs[-1]+1, x4)
-        y4_bot = np.array([self.rightray.f(x) for x in x4s])
+        x4s = np.arange(xs[-1]+1, x4, dtype=int)
+        y4_bot = np.array([self.rightray.f(x) for x in x4s], dtype=int)
+
         y4_bot_ep = y4_bot + ep_abovebelow
         y4_top_ep = y4_bot - height - ep_abovebelow
         
         xs_ep = np.concatenate([x1s, xs, x4s])
         y_top_ep = np.concatenate([y1_top_ep, y_top- ep_abovebelow, y4_top_ep])
         y_bot_ep = np.concatenate([y1_bot_ep, y_bot+ ep_abovebelow, y4_bot_ep])
+        height = y_bot_ep[0] - y_top_ep[0]
         y_top_ep = np.clip(y_top_ep,0,self.imgheight-1)
         y_bot_ep = np.clip(y_bot_ep,0,self.imgheight-1)
         n = len(xs_ep)
-        height = y_bot_ep[0] - y_top_ep[0]
         if len(self.img.shape) > 2:
             retline = np.zeros((height,n,3), dtype=np.uint8)
         else:
@@ -965,7 +966,7 @@ def extractLines2(imgpath):
         topy = bound[0].start
         boty = bound[0].stop
         x = (bound[1].start + bound[1].stop)/2
-        if boty - topy < 12: continue
+        if boty - topy < 8: continue
         try:
             if cleared_maps[0][topy,x] and cleared_maps[1][boty,x]:
                 continue
@@ -1032,7 +1033,7 @@ def extractLines2(imgpath):
         result = allines[i]
         if result.available:
 #             print '------------------------- FAR'
-            img2 = illu.copy()
+#             img2 = illu.copy()
 #             result.draw(img2, (125,125,125), 0.5, drawyhat=False)
 #             cv2.line(img2, (0, int(result.rightray.m)), (result.imgwidth, \
 #                 int(result.rightray.b*result.imgwidth + result.rightray.m)), (255,0,0),1)
@@ -1068,7 +1069,7 @@ def extractLines2(imgpath):
     
     print 'DONE LINE, now ILLUSTRATE **************, TOTAL LINE COUNT ' + str(len(allines))
     print 'TOTAL TIME  ' + str(time() -tt)
-    img2 = img.copy()
+    img2 = illu.copy()
     for line in allines:
         try:
             line._updateCurve()
@@ -1084,24 +1085,24 @@ def extractLines2(imgpath):
         line._updateCurve()
         line.expandPoints()
         imgline = line.extract(img, expands=SubLine.EP_FINAL_EXPAND)
-        cv2.imshow('line', imgline)
-        cv2.waitKey(-1)
+#         cv2.imshow('line', imgline)
+#         cv2.waitKey(-1)
         retlines.append(imgline)
     
-    return illu, img2, retlines
+    return None, None, retlines
 
     
 import random, os
 if __name__ == "__main__":
     np.set_printoptions( threshold=np.inf)
-    inputpath='/home/loitg/Downloads/complex-bg/special_line/'
+    inputpath='/home/loitg/Downloads/complex-bg/java/'
     outputpath='/home/loitg/Downloads/complex-bg/java5/'
     filelist = list(os.listdir(inputpath))
     filelist.sort()
-    frompos = 0#filelist.index('gimp-temp-1066042.-area.png')
+    frompos = filelist.index('6.JPG')
     for filename in filelist[frompos:]:       
-        if filename[-3:].upper() == 'PNG':
-#         if filename == 'gimp-temp-1066018.-area.png':
+#         if filename[-3:].upper() == 'JPG':
+#         if filename == '6.JPG':
             print filename
             illu, img, lines = extractLines2(inputpath + filename)
 #             cv2.imwrite(outputpath+filename + '_1.jpg', illu)

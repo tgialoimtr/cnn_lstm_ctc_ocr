@@ -145,6 +145,21 @@ def counter(l):
     ret[i] = count
     return ret
 
+def buildNextLayerRelation2(l1, l2):
+    l1 = l1.ravel()
+    l2= l2.ravel()
+    N = 100000#max(max(l1), max(l2))
+    l = N*l1 + l2
+    l.sort()
+    ret={}
+    c = np.where(np.diff(l)!=0)[0] + 1
+    d = [0] + c.tolist() + [len(l)]
+    e = np.diff(d)
+    for i in range(len(d) -1):
+        pi = l[d[i]]
+        ret[(pi/N, pi%N)] = e[i]
+    return ret
+
 def buildNextLayerRelation(l1, l2):
     l1 = l1.ravel()
     l2= l2.ravel()
@@ -195,7 +210,7 @@ def sauvolatree(img_grey):
                 stree.addRelation((-1,-1),(layerid,i+1))
             print 'add relation ', time() - tt; tt = time()
         else:
-            relations = buildNextLayerRelation(labels[previousid], label)
+            relations = buildNextLayerRelation2(labels[previousid], label)
             print 'build relation ', time() - tt; tt = time()
             for mapping, count in relations.iteritems():
                 label1, label2 = mapping
