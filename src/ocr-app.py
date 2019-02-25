@@ -10,7 +10,7 @@ import argparse
 import csv
 import simplejson as json
 
-from processing.pagepredictor import PagePredictor
+from processing.pagepredictor2 import PagePredictor
 from processing.server import LocalServer
 from extract_fields.extract import CLExtractor
 from inputoutput.receipt import ExtractedData, ReceiptSerialize

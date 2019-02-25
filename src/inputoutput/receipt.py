@@ -50,7 +50,7 @@ class ReceiptSerialize(object):
                 fromjson = json.loads(b64decode(jsonStr), parse_float=decimal.Decimal)
             rs.memberNumber = fromjson['memberNumber'];
             rs.token = fromjson['token'];
-            rs.amount = fromjson['amount'];
+            rs.amount = round(float(fromjson['amount']),2);
             rs.currency = fromjson['currency'];
             rs.program = fromjson['program'];
             rs.station = fromjson['station'];
@@ -68,6 +68,13 @@ class ReceiptSerialize(object):
 #         return b64encode(json.dumps(self.__dict__).decode('utf-8')).decode('utf-8')
     
     def combineExtractedData(self, extdata):
+        malay_malls = ['DAMANSARA', 'EAST COAST MALL', 'GURNEY', 'QUEENSBAY', 'THE MINES']
+        if extdata.mallName is not None:
+            temp = extdata.mallName.upper()
+            if any(mn in temp for mn in malay_malls):
+                self.currency = 'MYR'
+            else:
+                self.currency = 'SGD'
         self.mallName = extdata.mallName
         self.storeName = extdata.storeName
         self.locationCode = extdata.locationCode
